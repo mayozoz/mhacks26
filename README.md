@@ -325,8 +325,8 @@ A voiced announcer on the shared screen that riffs on players' names and their w
 - "See my weapon" waits up to `SPEC_WAIT_S` (8 s from the start of Drop, `server/src/balance.ts`) for an in-flight spec, then locks in the shape-based one.
 - Strict JSON output: `SPEC_JSON_SCHEMA` in `server/src/prompts/spec.v1.ts` follows OpenAI-style strict mode. `server/test/spec-schema.test.ts` keeps it valid and matched to the WeaponSpec fields.
 - Weapon Smith also supports text weapon creation over ACP 0.3.0 (acknowledgements, stateless sessions, bounded deduplication). Registration and ASI discovery need deployment/account verification. See [Weapon Smith instructions](agents/weapon_smith/README.md). Run `pnpm agents:schema` after changing the prompt or schema.
-- Weapon art (image to image) uses **Google Gemini "Nano Banana"** (`gemini-2.5-flash-image`, see "Drawing to 2D weapon images"). xAI `grok-imagine-image` is a tested alternative, commented out in `gen_sprite.ts` and `config.ts`. Bedrock was tried and dropped because the AWS account isn't allowlisted for it.
-- **AI sprites are optional.** `gen_sprite` stores Nano Banana art in `weapon.spriteUrl`. Without it (no key, failure, or too slow), weapons use the player's own doodle, cut out of its white background with an outline and glow.
+- Weapon art (image to image) uses **xAI** `grok-imagine-image` (see "Drawing to 2D weapon images"). Gemini and Bedrock were tried and dropped: Gemini's image model has no free quota, and the AWS account isn't allowlisted for Bedrock.
+- **AI sprites are optional.** `gen_sprite` stores xAI art in `weapon.spriteUrl`. Without it (no key, failure, or too slow), weapons use the player's own doodle, cut out of its white background with an outline and glow.
 
 ### Fallbacks (round never stalls)
 | Missing at Reveal | Where | Fallback |
@@ -344,7 +344,7 @@ A voiced announcer on the shared screen that riffs on players' names and their w
 - Prompts live only in `server/src/prompts/`. The client never imports them.
 
 ### Known open questions for M3
-- **Sprites:** Nano Banana art inline in `weapon.spriteUrl` (a PNG data URL, capped at 2 MB, no S3), otherwise the doodle. Large PNGs go to every subscriber, so watch bandwidth with 12 players. The shared screen cuts either one out of its white background at load time (`packages/engine/src/cutout.ts`).
+- **Sprites:** xAI art inline in `weapon.spriteUrl` (~100 KB JPEG data URL, no S3), otherwise the doodle. The shared screen cuts either one out of its white background at load time (`packages/engine/src/cutout.ts`).
 - **S3 uploads.** `server/src/lib/s3.ts` is a stub that throws, and nothing calls it any more: sounds are stored inline and there are no generated sprites. Only needed if an image provider comes back. To implement it, sign SigV4 with `@noble/hashes`, or call a tiny Lambda that hands out presigned PUT URLs.
 - **Model IDs** in `server/src/config.ts` are placeholders. Check them against Google's current model list.
 - **Who triggers generation.** The brief has the controller call the procedures right after `submit_drawing`. A sturdier option is for `submit_drawing` to insert rows into three one-shot schedule tables bound to the procedures. Generation would then still run if a phone locks mid-round.
@@ -526,21 +526,16 @@ the controller during a pulse (stops). iPhones should show the damage border.
 ### Drawing to 2D weapon images
 
 `RUN_SPRITE_GENERATION = true` in `client/src/routes/play/draw.ts` sends each
-nonempty submitted drawing to the server's `gen_sprite` procedure. Gemini "Nano Banana"
-image editing (`gemini-2.5-flash-image`) turns the doodle into filled, outlined, cel-shaded 2D
+nonempty submitted drawing to the server's `gen_sprite` procedure. xAI image editing
+(`grok-imagine-image`, ~$0.02 and ~8 s per image, ~100 KB JPEG) turns the doodle into filled, outlined, cel-shaded 2D
 weapon art while preserving its position, silhouette and colors. This runs
 independently of spec generation, so gameplay continues using drawing features.
 
-The Gemini API key's project needs billing or prepay credits, because the image model has no free quota.
-Set `GEMINI_API_KEY` in `.env`, publish the updated server, and load the key with
+Set `XAI_API_KEY` in `.env`, publish the updated server, and load the key with
 `corepack pnpm tsx scripts/set-secrets.ts` (append `maincloud` for cloud). Regenerate
 bindings with `corepack pnpm stdb:generate` and rebuild/reload the client. The key
 stays in the private secrets table. Sprite images are stored inline in
 `weapon.spriteUrl`, so this flow needs no S3 credentials.
-
-xAI Grok Imagine (`grok-imagine-image`, about $0.02 and 8 s per image, about 100 KB JPEG) is a
-tested drop-in alternative. It's commented out at the bottom of `gen_sprite.ts` and in
-`config.ts`, with steps to switch back.
 
 The client removes the solid white background and displays the art in the phone weapon guide, on the shared
 Reveal screen, in battle, and on the results podium. Reveal cards update if art

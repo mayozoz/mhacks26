@@ -36,7 +36,7 @@ MHacks 2026
   simulation 20 times a second, and is the only thing that calls the AI services.
 - AI SERVICES (called only by the game server, never by browsers):
     - ASI:One (Fetch.ai): doodle -> weapon rules (JSON), plus commentary lines.
-    - Google Gemini "Nano Banana": doodle -> finished weapon art (image to image).
+    - xAI Grok Imagine: doodle -> finished weapon art (image to image).
     - ElevenLabs: commentator voice, weapon-name announcements and weapon sound effects.
 - HOSTING: the website (phone and screen pages) is a static site on AWS S3 + CloudFront at
   https://doodleffa.tech. The game server runs on SpacetimeDB Maincloud.
@@ -91,7 +91,7 @@ MHacks 2026
 - Procedures (slower actions that can make web requests): the only place AI services are called.
   This keeps API keys on the server, never in the browser.
     - gen_spec: doodle -> weapon rules (ASI:One).
-    - gen_sprite: doodle -> weapon art (Gemini Nano Banana).
+    - gen_sprite: doodle -> weapon art (xAI).
     - gen_sfx: weapon sound (ElevenLabs).
     - gen_commentary and gen_announcement: commentator lines and speech (ASI:One + ElevenLabs).
 - API keys live in a private `secrets` table that no client can read.
@@ -136,17 +136,16 @@ MHacks 2026
 - Connection: the gen_spec procedure sends the PNG -> ASI:One returns JSON -> validate ->
   balance formula -> the weapon row is saved -> every screen and phone updates instantly.
 
-2.8 AI: Google Gemini "Nano Banana" (image to image)
-- `gemini-2.5-flash-image` takes the player's doodle and returns a finished, colored, cel-shaded
-  version of THE SAME weapon. The prompt tells it to keep the silhouette, position and colors, so
-  it still feels like your drawing.
+2.8 AI: xAI Grok Imagine (image to image)
+- `grok-imagine-image` takes the player's doodle and returns a finished, colored, cel-shaded
+  version of THE SAME weapon. Silhouette, position and colors are kept, so it still feels like
+  your drawing.
+- Measured: about 8 s per image, about 100 KB JPEG at 1024x1024, about $0.02 per image.
 - It starts the moment you submit your drawing, so it's ready by the Reveal "upgrade" moment.
 - Connection: the gen_sprite procedure sends the PNG -> the art is stored inline in the weapon row
-  (capped at 2 MB, so no separate file storage is needed) -> the screen cuts out the white
+  (small enough that no separate file storage is needed) -> the screen cuts out the white
   background -> shown on the phone card, reveal, arena and podium. If it fails, the player's
   original doodle is used.
-- Swappable: xAI Grok Imagine (`grok-imagine-image`) was also integrated and tested (about 8 s,
-  100 KB and $0.02 per image). It's kept commented out as a drop-in alternative.
 
 2.9 Audio: ElevenLabs
 - Text-to-speech (`eleven_flash_v2_5`, voice "Adam"):
@@ -184,7 +183,7 @@ MHacks 2026
    a locked player color. The screen loops a tutorial of the phone controls.
 2. DRAW (20 s): each phone draws on a canvas. On submit, the phone sends the strokes, a PNG and
    shape "features" to the server, then fires the AI procedures in the background:
-     - gen_sprite (Gemini Nano Banana): doodle -> finished art.
+     - gen_sprite (xAI): doodle -> finished art.
      - gen_spec (ASI:One): doodle -> weapon JSON, then gen_sfx (ElevenLabs) -> weapon sound.
 3. DROP: phones get a random special ability and pick a landing spot. This ends early once
    everyone has dropped. The AI keeps working meanwhile.
@@ -210,7 +209,7 @@ MHacks 2026
          colors used, and whether it's empty.
 2. BACKGROUND AI CALLS (fired by the phone right after submit, each one switched by a flag in
    client/src/routes/play/draw.ts):
-       - gen_sprite (RUN_SPRITE_GENERATION, ON): PNG -> Gemini Nano Banana -> finished art -> weapon row.
+       - gen_sprite (RUN_SPRITE_GENERATION, ON): PNG -> xAI -> finished art -> weapon row.
        - gen_sfx (RUN_SFX_GENERATION, ON): ElevenLabs -> a custom weapon sound.
        - gen_spec (RUN_GENERATION, ON): PNG -> ASI:One -> weapon rules (JSON) -> validate ->
          weapon row. Takes about 3-5 s. gen_sfx then uses the AI's sound description.
@@ -232,7 +231,7 @@ MHacks 2026
    weapon, or "Mystery Stick" for an empty drawing.
 5. BALANCE: `storeWeapon` runs the balance formula (same damage-per-second target, plus cooldown
    and knockback by type) and saves the weapon. Every screen and phone updates instantly.
-6. RENDER: the screen draws the Nano Banana art (or the doodle PNG cut out of its white background), the
+6. RENDER: the screen draws the xAI art (or the doodle PNG cut out of its white background), the
    decorations, and the archetype's attack motion. The vector strokes are used to MEASURE the
    drawing, not to draw it.
 
@@ -247,8 +246,8 @@ MHacks 2026
       agent.
     - Purpose: the "brain" of the game, the step that understands what you drew and decides how
       it should fight.
-- Google Gemini ("Nano Banana")
-    - Usage: `gemini-2.5-flash-image` image editing, doodle -> polished weapon art.
+- xAI (Grok Imagine), with the MHacks $25 API credit
+    - Usage: `grok-imagine-image` image editing, doodle -> polished weapon art.
     - Purpose: the Reveal "upgrade" moment. Your scribble becomes real game art while staying
       recognisably yours.
 - ElevenLabs
@@ -266,9 +265,9 @@ MHacks 2026
       CloudFront (global CDN), ACM (free HTTPS certificate) and Route 53 (DNS).
     - Purpose: fast, cheap and reliable loading when 12 people scan the QR code at once.
     - We also tried Amazon Bedrock (Stability image models) for the art step; see Challenges.
-- xAI (Grok Imagine, integrated, kept as a backup)
-    - `grok-imagine-image` image editing was integrated and tested with the MHacks $25 credit. It's
-      commented out so we can switch back in minutes.
+- Google Gemini (tried, not shipped)
+    - Tested `gemini-2.5-flash-image` for doodle -> art. Replaced by xAI because its image model has
+      no free quota.
 
 
 4. DESIGN CHOICES
@@ -314,7 +313,7 @@ Architecture
   before any player sees it.
 - Strict JSON schema for the LLM: the model must return the exact weapon shape.
 - Provider-agnostic: validation, balance and fallbacks don't care which AI produced the JSON, which
-  let us swap image providers (Gemini, Bedrock, xAI, then back to Gemini Nano Banana) in minutes.
+  let us swap image providers (Gemini -> Bedrock -> xAI) in minutes.
 
 Cost and usage (we planned around credits)
 - SpacetimeDB: about 18,000 server calls for one full 12-player round. We develop on a free local
@@ -322,9 +321,8 @@ Cost and usage (we planned around credits)
   should pause when no room is active, or it burns about 1.7M calls a day while idle.
 - ASI:One: about 1,500 tokens and about 2.5 s per weapon spec (`asi1`). Commentary lines
   (`asi1-mini`) take about 0.8 s.
-- Gemini Nano Banana: one image per weapon, billed per image on the Gemini API (paid tier; the
-  image model has no free quota).
-- xAI (backup): about $0.022 per weapon image, so the $25 credit covers about 1,100 weapons.
+- xAI: about $0.022 per weapon image, so the $25 credit covers about 1,100 weapons (about 90 full
+  12-player rounds).
 - ElevenLabs: about 6 commentator lines per round, capped at 16, with a minimum gap between lines.
   Weapon-name intros skip the LLM entirely (just "<player>'s <weapon>!").
 - Static website on S3 + CloudFront: pennies at hackathon scale. Route 53 is $0.50 a month and
@@ -345,9 +343,8 @@ Finding an image-to-image AI we could actually use
   API credits (consumer plan vs developer API billing).
 - Amazon Bedrock (Stability's sketch and inpaint models) was the best fit on paper, but our new AWS
   account was blocked pending "corporate customer" verification.
-- We integrated xAI Grok Imagine with the MHacks credit; it was working in a live round within the
-  hour. We then moved to Google's Gemini Nano Banana for the shipped version. Because the design is
-  provider-agnostic, each switch was a single-file change, and xAI stays as a commented-out backup.
+- Solution: xAI Grok Imagine with the MHacks credit. It was tested, integrated and working in a
+  live round within the hour, thanks to our provider-agnostic design.
 
 Putting it on a real domain
 - A bare domain (doodleffa.tech, no www) can't point at CloudFront with a normal CNAME record. We
@@ -399,11 +396,7 @@ Teamwork and integration
 - If a player taps "See my weapon" while the AI is still designing, the server makes the phone
   retry quietly for up to 8 s from the start of Drop (SPEC_WAIT_S in server/src/balance.ts), then
   falls back to the shape-based weapon.
-- Weapon art (Gemini Nano Banana), weapon sounds (ElevenLabs) and the commentator are ON.
-- Nano Banana needs credits on the Gemini key's project: as of 2026-10-04 its prepay credits were at
-  $0 (HTTP 402), so until they're topped up, players see their own doodle instead of AI art.
-- Nano Banana returns PNGs of up to about 2 MB that go to every phone and the big screen. Watch
-  for lag with 12 players.
+- Weapon art (xAI), weapon sounds (ElevenLabs) and the commentator are ON.
 - Weapon design currently goes through the Weapon Smith agent (SPEC_PROVIDER=agent), reached through
   a temporary Cloudflare tunnel. If the tunnel or agent is down, the game falls back to the
   shape-based weapon. To go back to calling ASI:One directly, set SPEC_PROVIDER=asi1 in .env and

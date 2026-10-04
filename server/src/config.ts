@@ -12,18 +12,16 @@ export const SPEC_PROVIDER: SpecProvider = 'asi1';
 export const MODELS = {
   /** gen_spec via ASI:One. Only `asi1` accepts images (not asi1-mini / asi1-ultra). */
   specAsi1: 'asi1',
-  /** gen_sprite via Gemini "Nano Banana" image editing */
-  sprite: 'gemini-2.5-flash-image',
-  // xAI alternative (paused): sprite: 'grok-imagine-image',  (~$0.02, ~8 s, ~100 KB JPEG at 1024²)
+  /** gen_sprite via xAI image editing (~$0.02, ~8 s, ~100 KB JPEG at 1024²) */
+  sprite: 'grok-imagine-image',
   announcement: 'eleven_flash_v2_5',
 } as const;
 
 export const ENDPOINTS = {
   /** OpenAI-compatible chat completions */
   asi1: 'https://api.asi1.ai/v1/chat/completions',
-  /** Gemini Nano Banana image editing (input image + prompt → image) */
-  geminiImage: `https://generativelanguage.googleapis.com/v1beta/models/${MODELS.sprite}:generateContent`,
-  // xAI alternative (paused): xaiImageEdit: 'https://api.x.ai/v1/images/edits',
+  /** xAI image edits (input image + prompt → image) */
+  xaiImageEdit: 'https://api.x.ai/v1/images/edits',
   elevenSfx: 'https://api.elevenlabs.io/v1/sound-generation',
   /** ElevenLabs text-to-speech (commentator + per-phone weapon announcement) */
   elevenTts: (voiceId: string, format = 'mp3_44100_64') =>
@@ -58,8 +56,7 @@ export const SECRET_KEYS = [
   'AGENT_URL',
   'AGENT_SHARED_SECRET',
   'ASI_ONE_API_KEY',
-  'GEMINI_API_KEY',
-  // 'XAI_API_KEY',  // xAI Grok Imagine sprites (paused)
+  'XAI_API_KEY',
   'ELEVENLABS_API_KEY',
   'ELEVENLABS_VOICE_ID',
   'AWS_ACCESS_KEY_ID',
