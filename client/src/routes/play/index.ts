@@ -5,6 +5,7 @@ import { applyPlayerTheme } from '../../ui/theme';
 import { preventControllerZoom } from '../../ui/no-zoom';
 import type { PlayCtx, View } from './types';
 import { joinView } from './join';
+import { phoneGate } from './phone-gate';
 import { drawView } from './draw';
 import { dropView } from './drop';
 import { battleView } from './battle';
@@ -31,6 +32,7 @@ const VIEWS: Record<Phase, View> = {
 export async function mount(el: HTMLElement) {
   preventControllerZoom();
   enableAudio();
+  await phoneGate(el); // computers without touch: "grab your phone" first
   const { conn, identity } = await connect('play');
   const me = identity.toHexString();
   const ctx: PlayCtx = { conn, identity, el, roomCode: '' };

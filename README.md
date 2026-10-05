@@ -75,7 +75,7 @@ Open:
 - **Controllers:** scan the QR, or open `http://<LAN-IP>:5173/play?room=ABCD`.
 - **Playground:** `http://localhost:5173/dev/weapons`.
 
-You can play in desktop browser tabs while developing. `/screen` and `/play` keep separate identity tokens, so one laptop can act as the screen and a controller at once. Use a private window for each extra multiplayer controller.
+You can play in desktop browser tabs while developing. A computer without a touchscreen first sees a "Grab your phone" screen (`client/src/routes/play/phone-gate.ts`) with a QR code back to the room: click "Continue on this computer anyway" (remembered for the tab) or add `&desktop` to the `/play` URL. `/screen` and `/play` keep separate identity tokens, so one laptop can act as the screen and a controller at once. Use a private window for each extra multiplayer controller.
 
 > In local development, Vite forwards database WebSockets through port 5173 to local port 3000, so phones use the game’s current address. When the host opens localhost, the QR/link discovers its current LAN address automatically. Both devices must use the same Wi-Fi. Production builds use `VITE_STDB_URI` and `VITE_PUBLIC_URL`; configure those for the deployed server.
 

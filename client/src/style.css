@@ -209,3 +209,10 @@ input, select { font-size: 16px; } /* iOS zooms into inputs smaller than 16px */
 .service-notice .service-list p { margin: 0 0 10px; }
 .service-notice .service-list p:last-child { margin-bottom: 0; }
 .service-notice .when, .service-notice .feature { color: #e0a5a5; font-size: 12px; }
+
+/* /play on a computer with no touchscreen */
+.phone-gate > div { max-width: 420px; }
+.phone-gate-icon { font-size: 56px; }
+.phone-gate p { color: #c9c2dc; line-height: 1.5; }
+.phone-gate-qr { display: block; margin: 16px auto; border-radius: 12px; background: #fff; }
+.phone-gate-skip { margin-top: 18px; background: none; border: none; color: #9f97b8; text-decoration: underline; font-size: 13px; cursor: pointer; }
