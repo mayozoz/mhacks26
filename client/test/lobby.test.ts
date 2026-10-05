@@ -9,7 +9,7 @@ vi.mock('../src/routes/screen/tutorial', () => ({ mountTutorial: () => () => {} 
 function setup(start = vi.fn(async () => {})) {
   const nodes = new Map<string, any>();
   const el = { innerHTML: '', querySelector: (selector: string) => {
-    if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', disabled: false });
+    if (!nodes.has(selector)) nodes.set(selector, { innerHTML: '', textContent: '', disabled: false, classList: { toggle: vi.fn(), remove: vi.fn() } });
     return nodes.get(selector);
   } } as unknown as HTMLElement;
   const players: any[] = [];
@@ -25,16 +25,20 @@ function setup(start = vi.fn(async () => {})) {
 }
 
 describe('lobby joining and start flow', () => {
-  it('requires two players and a host click for multiplayer', () => {
+  it('shows n / max joined and only complains about the 2-player minimum when Start is pressed', () => {
     const s = setup();
-    expect(s.nodes.get('#start').disabled).toBe(true);
-    expect(s.nodes.get('#start-hint').textContent).toBe('2 players needed to start');
+    expect(s.nodes.get('#player-count').textContent).toBe('0 / 12 joined');
+    expect(s.nodes.get('#start').disabled).toBe(false);
+    expect(s.nodes.get('#start-hint').textContent).toBe('');
     s.join('human1', '<Ada>');
     expect(s.nodes.get('#players').innerHTML).toContain('&lt;Ada&gt;');
-    expect(s.nodes.get('#start-hint').textContent).toBe('1 more player needed to start');
-    s.join('human2');
-    expect(s.nodes.get('#start').disabled).toBe(false);
+    expect(s.nodes.get('#player-count').textContent).toBe('1 / 12 joined');
+    s.nodes.get('#start').onclick();
     expect(s.start).not.toHaveBeenCalled();
+    expect(s.nodes.get('#start-hint').textContent).toContain('Need at least 2 players to start');
+    expect(s.nodes.get('#start-hint').classList.toggle).toHaveBeenLastCalledWith('is-error', true);
+    s.join('human2');
+    expect(s.nodes.get('#start-hint').textContent).toBe(''); // error clears once there are enough
     s.nodes.get('#start').onclick();
     expect(s.start).toHaveBeenCalledTimes(1);
     s.stop();

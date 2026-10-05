@@ -59,19 +59,23 @@ export function describeService(r: ServiceRow, now = Date.now()) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Mounts the lobby notice; it hides itself when every service is healthy. */
+/** Mounts the lobby notice: a small red pill (top right) that expands to the details on click. */
 export function mountServiceNotice(el: HTMLElement, conn: DbConnection): () => void {
-  const box = document.createElement('aside');
+  const box = document.createElement('details');
   box.className = 'service-notice';
-  box.setAttribute('role', 'status');
+  box.innerHTML = '<summary role="status"></summary><div class="service-list"></div>';
   el.appendChild(box);
+  const summary = box.querySelector('summary')!, list = box.querySelector<HTMLDivElement>('.service-list')!;
   const render = () => {
     const rows = [...conn.db.serviceStatus.iter()] as ServiceRow[];
     box.hidden = rows.length === 0;
-    box.innerHTML = rows.length ? `<strong>Host check · lobby only</strong>${rows.map((r) => {
+    if (!rows.length) { box.open = false; return; }
+    summary.innerHTML = `<span aria-hidden="true">⚠</span> ${rows.length === 1 ? '1 service problem' : `${rows.length} service problems`}<span class="service-hint">host check</span>`;
+    // Only the list is rebuilt, so an expanded notice stays expanded as rows update.
+    list.innerHTML = rows.map((r) => {
       const d = describeService(r);
       return `<p><b>${esc(d.headline)}</b> <span class="when">${d.when}</span><br><span class="feature">${esc(d.feature)}</span><br>${esc(d.fix)} ${esc(d.meanwhile)}</p>`;
-    }).join('')}` : '';
+    }).join('');
   };
   conn.db.serviceStatus.onInsert(render); conn.db.serviceStatus.onUpdate(render); conn.db.serviceStatus.onDelete(render);
   const timer = window.setInterval(render, 30_000); // keep "x min ago" fresh

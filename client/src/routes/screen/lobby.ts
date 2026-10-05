@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import '../../ui/arena-menu.css';
 import { menuBackdrop } from '../../ui/menu-art';
-import { colorForSlot } from '@doodle/spec';
+import { MAX_PLAYERS, colorForSlot } from '@doodle/spec';
 import type { DbConnection } from '../../module_bindings';
 import { roomJoinUrl } from '../../net/room-link';
 import { mountTutorial } from './tutorial';
@@ -37,20 +37,26 @@ export function lobbyOverlay(el: HTMLElement, conn: DbConnection, code: string, 
   const list = el.querySelector<HTMLUListElement>('#players')!;
   const start = el.querySelector<HTMLButtonElement>('#start')!;
   const hint = el.querySelector<HTMLElement>('#start-hint')!;
+  let tooFew = false; // set when Start was pressed with fewer than 2 phones; cleared when someone joins
   const begin = async () => {
-    if (!active || busy || start.disabled) return;
-    busy = true; start.disabled = true; hint.textContent = 'Starting your match…';
+    if (!active || busy) return;
+    if (connectedCount() < 2) { tooFew = true; refresh(); return; }
+    busy = true; start.disabled = true; hint.classList.remove('is-error'); hint.textContent = 'Starting your match…';
     try { await startRound(); }
     catch (error) { if (active) { busy = false; refresh(); hint.textContent = error instanceof Error ? error.message : 'Could not start. Please retry.'; } }
   };
+  const roomPlayers = () => [...conn.db.player.iter()].filter(p => p.roomCode === code);
+  const connectedCount = () => roomPlayers().filter(p => p.connected).length;
   const refresh = () => {
-    const ps = [...conn.db.player.iter()].filter(p => p.roomCode === code).sort((a, b) => a.colorSlot - b.colorSlot);
-    const connected = ps.filter(p => p.connected);
-    const humanCount = connected.length;
-    const ready = humanCount >= 2;
-    start.disabled = busy || !ready;
-    el.querySelector('#player-count')!.textContent = `${connected.length} joined`;
-    hint.textContent = busy ? 'Starting your match…' : ready ? `${humanCount} phones connected. Ready to start!` : `${Math.max(0, 2 - humanCount)} ${humanCount === 1 ? 'more player' : 'players'} needed to start`;
+    const ps = roomPlayers().sort((a, b) => a.colorSlot - b.colorSlot);
+    const humanCount = ps.filter(p => p.connected).length;
+    if (humanCount >= 2) tooFew = false;
+    start.disabled = busy;
+    el.querySelector('#player-count')!.textContent = `${humanCount} / ${MAX_PLAYERS} joined`;
+    // Only complain about the 2-player minimum once the host actually presses Start.
+    const error = tooFew && !busy;
+    hint.classList.toggle('is-error', error);
+    hint.textContent = busy ? 'Starting your match…' : error ? `Need at least 2 players to start. ${humanCount === 1 ? 'Get 1 more phone to scan the code.' : 'Scan the code with 2 phones.'}` : humanCount >= MAX_PLAYERS ? `Room full (${MAX_PLAYERS} players max).` : '';
     list.innerHTML = ps.length ? ps.map(p => {
       const c = colorForSlot(p.colorSlot);
       return `<li class="lobby-player${p.connected ? '' : ' is-offline'}" style="--c:${c.hex}"><span class="lobby-player-marker" aria-hidden="true">${drawMarkerSvg(p.marker, c.hex, 24)}</span><div><strong>${escapeHtml(p.name)}</strong><span>PHONE CONTROLLER</span></div><span class="lobby-player-status">${p.connected ? 'Ready' : 'Offline'}</span></li>`;
