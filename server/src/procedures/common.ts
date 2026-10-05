@@ -2,6 +2,7 @@ import type { Identity } from 'spacetimedb';
 import type { ProcedureCtx } from 'spacetimedb/server';
 import type { DrawingFeatures } from '@doodle/spec';
 import { SECRET_KEYS, type SecretKey } from '../config';
+import { classifyFailure, redactKeys, type Service } from '../lib/service-status';
 import type spacetimedb from '../schema';
 import type { InferSchema } from 'spacetimedb/server';
 
@@ -88,12 +89,25 @@ export function writeIfStillPending(ctx: PCtx, field: WeaponField, value: string
  * Log a failed generation step: server log + a short debug_event for the ?debug overlay.
  * Never include prompts or raw model output in anything clients can read.
  */
-export function logFail(ctx: PCtx, roomCode: string, what: string, err: unknown) {
-  const msg = err instanceof Error ? err.message : String(err);
+export function logFail(ctx: PCtx, roomCode: string, what: string, err: unknown, svc?: { service: Service; provider: string }) {
+  const msg = redactKeys(err instanceof Error ? err.message : String(err));
   console.warn(`[gen] ${what} failed: ${msg}`);
   try {
-    ctx.withTx((tx) => tx.db.debugEvent.insert({ id: 0n, roomCode, source: what, message: `failed: ${msg}`.slice(0, 300), createdAt: tx.timestamp }));
+    ctx.withTx((tx) => {
+      tx.db.debugEvent.insert({ id: 0n, roomCode, source: what, message: `failed: ${msg}`.slice(0, 300), createdAt: tx.timestamp });
+      if (!svc) return;
+      const row = { service: svc.service, provider: svc.provider, issue: classifyFailure(msg), detail: msg, at: tx.timestamp };
+      if (tx.db.serviceStatus.service.find(svc.service)) tx.db.serviceStatus.service.update(row);
+      else tx.db.serviceStatus.insert(row);
+    });
   } catch { /* never break the procedure over a debug row */ }
+}
+
+/** A service worked again: clear its lobby notice. */
+export function serviceOk(ctx: PCtx, service: Service) {
+  try {
+    ctx.withTx((tx) => { if (tx.db.serviceStatus.service.find(service)) tx.db.serviceStatus.service.delete(service); });
+  } catch { /* status is best-effort */ }
 }
 
 /** Failure may clear only this request's in-flight marker, never a later round's. */

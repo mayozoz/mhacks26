@@ -195,3 +195,11 @@ input, select { font-size: 16px; } /* iOS zooms into inputs smaller than 16px */
 .room-lobby { height: 100%; overflow-y: auto; pointer-events: auto; align-content: center; }
 .screen-connection-notice { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 100; max-width: 90vw; padding: 12px 20px; border-radius: 12px; background: #542739; color: #fff; }
 @media (max-height: 700px), (max-width: 900px) { .room-lobby { align-content: start; } }
+
+/* Host-only service notice on the lobby (out of credits, bad key, agent down...) */
+.service-notice { position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(380px, calc(100% - 32px)); padding: 12px 16px; border: 2px solid #f5a524; border-radius: 14px; background: #2a2110f2; color: #ffe7b8; font-size: 14px; line-height: 1.45; pointer-events: auto; }
+.service-notice[hidden] { display: none; }
+.service-notice strong { display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #f5a524; }
+.service-notice p { margin: 6px 0 0; }
+.service-notice .when { color: #c9b48a; font-size: 12px; }
+@media (max-width: 600px) { .service-notice { position: static; width: auto; margin: 12px 16px; } }

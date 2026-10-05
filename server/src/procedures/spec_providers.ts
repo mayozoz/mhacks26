@@ -2,6 +2,7 @@ import { TimeDuration } from 'spacetimedb';
 import { TIMEOUT_MS, type SecretKey, type SpecProvider } from '../config';
 import { toBase64 } from '../lib/base64';
 import type { PCtx } from './common';
+import { httpError } from '../lib/service-status';
 import { agentRequest, agentText, asi1Request, asi1Text, type HttpCall, type SpecRequest } from './spec_requests';
 
 // Each provider turns (doodle PNG, features, system prompt) into raw JSON text, or throws.
@@ -37,7 +38,7 @@ export function requestSpec(ctx: PCtx, provider: SpecProvider, key: string, inpu
     body: call.body,
     timeout: TimeDuration.fromMillis(TIMEOUT_MS.spec),
   });
-  if (!res.ok) throw new Error(`${provider} HTTP ${res.status}`);
+  if (!res.ok) throw httpError(provider, res);
   const text = p.text(res.json());
   if (typeof text !== 'string') throw new Error(`${provider}: no text in response`);
   return text;

@@ -4,7 +4,10 @@ import spacetimedb from '../schema';
 import { ENDPOINTS, MODELS, TIMEOUT_MS } from '../config';
 import { toBase64 } from '../lib/base64';
 import { SPRITE_PROMPT } from '../prompts/sprite.v1';
-import { loadJob, logFail, writeIfStillPending } from './common';
+import { loadJob, logFail, serviceOk, writeIfStillPending } from './common';
+import { ART_PROVIDER, httpError } from '../lib/service-status';
+
+const ART = { service: 'weapon_art', provider: ART_PROVIDER } as const;
 
 /** Bound the inline art sent to every subscriber; no public bucket is required. */
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -28,7 +31,7 @@ export const genSprite = spacetimedb.procedure(t.unit(), (ctx) => {
   if (!job || !job.png.length || job.features?.isEmpty) return {};
   const key = job.secrets.XAI_API_KEY?.trim();
   if (!key) {
-    logFail(ctx, job.roomCode, 'gen_sprite', new Error('XAI_API_KEY is not configured'));
+    logFail(ctx, job.roomCode, 'gen_sprite', new Error('XAI_API_KEY is not configured'), ART);
     return {};
   }
   try {
@@ -43,10 +46,11 @@ export const genSprite = spacetimedb.procedure(t.unit(), (ctx) => {
         response_format: 'b64_json',
       }),
     });
-    if (!res.ok) throw new Error(`Image provider HTTP ${res.status}`);
+    if (!res.ok) throw httpError('Image provider', res);
     writeIfStillPending(ctx, 'spriteUrl', spriteDataUrl(res.json()), false, job);
+    serviceOk(ctx, 'weapon_art');
   } catch (e) {
-    logFail(ctx, job.roomCode, 'gen_sprite', e);
+    logFail(ctx, job.roomCode, 'gen_sprite', e, ART);
   }
   return {};
 });

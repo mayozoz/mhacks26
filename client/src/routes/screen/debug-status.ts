@@ -1,6 +1,7 @@
 import type { DbConnection } from '../../module_bindings';
 import { DEBUG, debug, type Item } from '../../debug';
 import { secondsLeft, secondsOverdue } from '../../net/clock';
+import { describeService, type ServiceRow } from '../../ui/service-notice';
 
 /**
  * Shared-screen debug status (only with ?debug): phase timer, overdue/stalled detection,
@@ -25,6 +26,11 @@ export function mountScreenDebug(conn: DbConnection, code: string) {
     if (r.phase === 'lobby') items.push({ level: 'ok', text: `room ${code} · lobby · waiting for Start` });
     else if (late > 1.5) items.push({ level: 'error', text: `room ${code} · ${r.phase} ended ${late.toFixed(0)}s ago — server is NOT advancing (see errors / pnpm stdb:logs)` });
     else items.push({ level: 'wait', text: `room ${code} · ${r.phase} · ${left.toFixed(1)}s left` });
+
+    for (const s of conn.db.serviceStatus.iter() as Iterable<ServiceRow>) {
+      const d = describeService(s);
+      items.push({ level: 'error', text: `${d.headline} · ${d.when} · ${s.detail}` });
+    }
 
     const players = [...conn.db.player.iter()].filter((p) => p.roomCode === code);
     const doodles = new Set([...conn.db.doodle.iter()].filter((d) => d.roomCode === code).map((d) => d.player.toHexString()));

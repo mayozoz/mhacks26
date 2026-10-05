@@ -1,6 +1,7 @@
 import './draw.css';
 import { extractFeatures, type Drawing, type Stroke } from '@doodle/spec';
 import { mountCountdown } from '../../ui/countdown';
+import { countdownTicks } from '../../audio/countdown-sounds';
 import { debug } from '../../debug';
 import type { View } from './types';
 import { eraseAt } from './erase';
@@ -38,6 +39,8 @@ export const drawView: View = (ctx) => {
     </div>`;
   const room = () => ctx.conn.db.room.code.find(ctx.roomCode);
   const stopCd = mountCountdown(ctx.el.querySelector('#cd')!, () => room()?.phaseEndsAt);
+  // phones tick only here: during Draw players are looking down at them
+  const stopTicks = countdownTicks(() => room()?.phaseEndsAt, 5);
   const canvas = ctx.el.querySelector<HTMLCanvasElement>('#c')!;
   const g = canvas.getContext('2d')!;
   const drawing: Drawing = { width: SIZE, height: SIZE, strokes: [] };
@@ -169,5 +172,5 @@ export const drawView: View = (ctx) => {
   };
 
   // Phase changing away from draw unmounts this view → submit on the way out.
-  return () => { stopCd(); void submit(); };
+  return () => { stopCd(); stopTicks(); void submit(); };
 };

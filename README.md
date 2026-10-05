@@ -328,6 +328,16 @@ A voiced announcer on the shared screen that riffs on players' names and their w
 - Weapon art (image to image) uses **xAI** `grok-imagine-image` (see "Drawing to 2D weapon images"). Gemini and Bedrock were tried and dropped: Gemini's image model has no free quota, and the AWS account isn't allowlisted for Bedrock.
 - **AI sprites are optional.** `gen_sprite` stores xAI art in `weapon.spriteUrl`. Without it (no key, failure, or too slow), weapons use the player's own doodle, cut out of its white background with an outline and glow.
 
+### Service problems (host notice)
+- Every AI step records its latest failure per feature in the public `service_status` table (`server/src/lib/service-status.ts`): weapon design, weapon art, weapon sounds, phone announcer and commentator. A success clears it.
+- Failures are classified as out of credits, API key rejected, rate limited, not set up, can't be reached (for example the agent or its tunnel is down), timing out, or provider down. Classification uses the HTTP status plus a short snippet of the provider's response, with keys redacted.
+- The shared-screen **lobby** shows a small "Host check" notice (bottom right) with what's wrong, what players get meanwhile, and how to fix it. It never appears during a round, so players don't see AI messages. `?debug` lists the same rows with the raw detail.
+
+### Countdown sounds
+- Synthesized with Web Audio (`countdownCue` in `client/src/audio/sfx.ts`), no files.
+- The big screen ticks the last 5 s of Draw, Drop and Battle, beeps Reveal's 3‥2‥1 and plays a chord when the fight starts. Phones tick only the last 5 s of Draw.
+- Audio unlocks on the host's Start click (or any click or key on the screen after a reload).
+
 ### Fallbacks (round never stalls)
 | Missing at Reveal | Where | Fallback |
 |---|---|---|

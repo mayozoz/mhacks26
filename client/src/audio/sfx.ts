@@ -101,3 +101,31 @@ export function click() {
     if (buffer) playBuffer(buffer, 0.4);
   }).catch(() => {});
 }
+
+export type CountdownCue = 'tick' | 'last' | 'go';
+
+/**
+ * Countdown cues, synthesized on the fly (no files): a short blip each second, a higher one on
+ * the final second, and a bright chord when the fight starts. Silent until audio is unlocked.
+ */
+export function countdownCue(kind: CountdownCue) {
+  const ctx = audioContext();
+  if (ctx.state !== 'running') return;
+  const t0 = ctx.currentTime;
+  const tone = (freq: number, start: number, dur: number, type: OscillatorType, vol: number) => {
+    const osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, t0 + start);
+    gain.gain.exponentialRampToValueAtTime(vol, t0 + start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    osc.start(t0 + start); osc.stop(t0 + start + dur + 0.02);
+  };
+  if (kind === 'tick') tone(880, 0, 0.09, 'sine', 0.22);
+  else if (kind === 'last') tone(1320, 0, 0.18, 'sine', 0.28);
+  else {
+    tone(523, 0, 0.55, 'square', 0.07); tone(659, 0, 0.55, 'square', 0.06);
+    tone(784, 0.04, 0.6, 'square', 0.06); tone(1047, 0.08, 0.6, 'triangle', 0.16);
+  }
+}

@@ -6,7 +6,8 @@ import spacetimedb from '../schema';
 import { COMMENTARY, ENDPOINTS } from '../config';
 import { COMMENTARY_SYSTEM_PROMPT } from '../prompts/commentary.v1';
 import { secondsBetween } from '../lib/time';
-import type { PCtx } from './common';
+import { logFail, serviceOk, type PCtx } from './common';
+import { httpError } from '../lib/service-status';
 
 /**
  * weapon: Reveal intro — just "<player>'s <weapon name>!" for focus `a`, spoken as-is (no LLM),
@@ -36,9 +37,13 @@ export const genCommentary = spacetimedb.procedure(
     try {
       const line = kind === 'weapon' ? job.weaponLine : writeLine(ctx, job.asiKey, job.snapshot);
       if (!line) return EMPTY;
-      return { text: line, audio: speak(ctx, job.elevenKey, line) };
+      const audio = speak(ctx, job.elevenKey, line);
+      serviceOk(ctx, 'commentator');
+      return { text: line, audio };
     } catch (e) {
-      console.warn(`[commentary] ${kind} failed: ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`[commentary] ${kind} failed: ${msg}`);
+      logFail(ctx, job.roomCode, `gen_commentary (${kind})`, e, { service: 'commentator', provider: msg.startsWith('ASI:One') ? 'ASI:One' : 'ElevenLabs' });
       return EMPTY;
     }
   },
@@ -61,7 +66,7 @@ function load(ctx: PCtx, kind: Kind, a: string, b: string) {
       const w = p && tx.db.weapon.player.find(p.identity);
       if (r.phase !== 'reveal' || !p || !w?.spec) return null;
       const weapon = (JSON.parse(w.spec) as StoredWeapon).spec.name;
-      return { asiKey, elevenKey, snapshot: null, weaponLine: `${p.name}'s ${weapon}!` };
+      return { roomCode: r.code, asiKey, elevenKey, snapshot: null, weaponLine: `${p.name}'s ${weapon}!` };
     }
 
     // throttle: min gap + max lines per round (cost guard)
@@ -94,7 +99,7 @@ function load(ctx: PCtx, kind: Kind, a: string, b: string) {
         };
       }),
     };
-    return { asiKey, elevenKey, snapshot, weaponLine: '' };
+    return { roomCode: r.code, asiKey, elevenKey, snapshot, weaponLine: '' };
   });
 }
 
@@ -113,7 +118,7 @@ function writeLine(ctx: PCtx, key: string, snapshot: unknown): string | null {
       ],
     }),
   });
-  if (!res.ok) throw new Error(`asi1 HTTP ${res.status}`);
+  if (!res.ok) throw httpError('ASI:One', res);
   const raw: unknown = res.json()?.choices?.[0]?.message?.content;
   if (typeof raw !== 'string') return null;
   const line = raw.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/["“”*_#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 200);
@@ -142,7 +147,7 @@ function speak(ctx: PCtx, key: string, text: string): Uint8Array {
       voice_settings: { stability: 0.35, similarity_boost: 0.75, style: 0.6, use_speaker_boost: true },
     }),
   });
-  if (!res.ok) throw new Error(`elevenlabs HTTP ${res.status}`);
+  if (!res.ok) throw httpError('ElevenLabs', res);
   return res.bytes();
 }
 

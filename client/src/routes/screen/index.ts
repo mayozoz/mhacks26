@@ -1,5 +1,7 @@
-import type { Phase } from '@doodle/spec';
 import { connect } from '../../net/connection';
+import { REVEAL, type Phase } from '@doodle/spec';
+import { countdownCue, enableAudio, resumeAudio } from '../../audio/sfx';
+import { countdownTicks } from '../../audio/countdown-sounds';
 import { syncFromPhaseStart } from '../../net/clock';
 import { mountCountdown } from '../../ui/countdown';
 import { Arena } from './arena';
@@ -9,6 +11,7 @@ import { mountScreenDebug } from './debug-status';
 import { mountScoreboard } from './scoreboard';
 import { mountReveal } from './reveal';
 import { mountCommentator } from './commentator';
+import { mountServiceNotice } from '../../ui/service-notice';
 
 // Shared screen (/screen). Creates a room, subscribes to everything public for it, and
 // renders. It never simulates — positions come from `fighter` rows, ~100 ms behind.
@@ -30,6 +33,8 @@ export async function mount(el: HTMLElement) {
   let phase: Phase | null = null;
   let commentator: ReturnType<typeof mountCommentator> | null = null;
   let cleanup = () => {};
+  let stopTicks = () => {};
+  enableAudio(); // any click/key on the screen unlocks countdown sounds (e.g. after a reload)
 
   const render = () => {
     const r = conn.db.room.code.find(code);
@@ -37,10 +42,20 @@ export async function mount(el: HTMLElement) {
     phase = r.phase as Phase;
     syncFromPhaseStart(r.phaseStartedAt);
     cleanup();
+    stopTicks(); stopTicks = () => {};
     overlay.innerHTML = '';
+    // Countdown sounds: last 5 s of Draw/Drop/Battle, Reveal's 3‥2‥1, and a hit when the fight starts.
+    const ends = () => conn.db.room.code.find(code)?.phaseEndsAt;
+    if (phase === 'draw' || phase === 'drop' || phase === 'battle') stopTicks = countdownTicks(ends, 5);
+    else if (phase === 'reveal') stopTicks = countdownTicks(ends, REVEAL.countdownS);
+    if (phase === 'battle') countdownCue('go');
     arena?.setPhase(phase);
     commentator?.setPhase(phase);
-    if (phase === 'lobby') cleanup = lobbyOverlay(overlay, conn, code, async () => { await arenaReady; await conn.reducers.startRound({}); });
+    if (phase === 'lobby') {
+      const a = lobbyOverlay(overlay, conn, code, async () => { void resumeAudio(); await arenaReady; await conn.reducers.startRound({}); });
+      const b = mountServiceNotice(overlay, conn);
+      cleanup = () => { a(); b(); };
+    }
     else if (phase === 'results') {
       const a = resultsOverlay(overlay, conn, code), b = mountScoreboard(overlay, conn, code);
       cleanup = () => { a(); b(); };
@@ -82,6 +97,7 @@ export async function mount(el: HTMLElement) {
       `SELECT * FROM ability_object WHERE room_code = '${code}'`,
       `SELECT * FROM projectile WHERE room_code = '${code}'`,
       `SELECT * FROM fx_event WHERE room_code = '${code}'`,
+      'SELECT * FROM service_status',
     ]);
     render();
   };

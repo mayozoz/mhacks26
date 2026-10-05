@@ -4,7 +4,10 @@ import type { StoredWeapon } from '@doodle/spec';
 import spacetimedb from '../schema';
 import { ENDPOINTS, MODELS, TIMEOUT_MS } from '../config';
 import { toBase64 } from '../lib/base64';
-import { logFail } from './common';
+import { logFail, serviceOk } from './common';
+import { httpError } from '../lib/service-status';
+
+const VOICE = { service: 'voice', provider: 'ElevenLabs' } as const;
 
 const DEFAULT_VOICE = 'JBFqnCBsd6RMkjVDRZzb';
 
@@ -38,7 +41,7 @@ export const genAnnouncement = spacetimedb.procedure(t.string(), (ctx) => {
   if (!job) return '';
   if ('cached' in job) return job.cached ?? '';
   if ('missingKey' in job) {
-    logFail(ctx, job.missingKey!, 'gen_announcement', new Error('ELEVENLABS_API_KEY is not configured'));
+    logFail(ctx, job.missingKey!, 'gen_announcement', new Error('ELEVENLABS_API_KEY is not configured'), VOICE);
     return '';
   }
 
@@ -50,12 +53,13 @@ export const genAnnouncement = spacetimedb.procedure(t.string(), (ctx) => {
       timeout: TimeDuration.fromMillis(TIMEOUT_MS.announcement),
       body: JSON.stringify({ text: `Your weapon is ${job.row.name}!`, model_id: MODELS.announcement }),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw httpError('ElevenLabs', res);
     const bytes = res.bytes();
     if (!bytes.length || bytes.length > 256_000) throw new Error('Invalid speech response size');
     audioUrl = `data:audio/mpeg;base64,${toBase64(bytes)}`;
+    serviceOk(ctx, 'voice');
   } catch (e) {
-    logFail(ctx, job.row.roomCode, 'gen_announcement', e);
+    logFail(ctx, job.row.roomCode, 'gen_announcement', e, VOICE);
   }
 
   return ctx.withTx((tx) => {

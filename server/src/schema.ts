@@ -190,6 +190,22 @@ export const debugEvent = table(
   },
 );
 
+/**
+ * Latest problem per outside service (out of credits, bad key, rate limit, agent down...), for the
+ * shared-screen lobby's host notice and ?debug. Cleared on the next success. Details are
+ * key-redacted provider errors, never prompts or model output.
+ */
+export const serviceStatus = table(
+  { name: 'service_status', public: true },
+  {
+    service: t.string().primaryKey(), // 'weapon_design' | 'weapon_art' | 'weapon_sound' | 'voice' | 'commentator'
+    provider: t.string(), // 'ASI:One', 'Weapon Smith agent', 'xAI', 'Gemini', 'ElevenLabs'
+    issue: t.string(), // see ServiceIssue in lib/service-status.ts
+    detail: t.string(),
+    at: t.timestamp(),
+  },
+);
+
 /** Private: per-room commentator throttle (cost guard). */
 export const commentary = table(
   { name: 'commentary' },
@@ -235,6 +251,6 @@ export const generation = table({ name: 'generation' }, {
 });
 
 const spacetimedb = schema({
-  generation, room, player, drawing, doodle, weapon, weaponVoice, fighter, input, projectile, abilityObject, fxEvent, debugEvent, commentary, tickSchedule, secrets, admin,
+  generation, room, player, drawing, doodle, weapon, weaponVoice, fighter, input, projectile, abilityObject, fxEvent, debugEvent, serviceStatus, commentary, tickSchedule, secrets, admin,
 });
 export default spacetimedb;
