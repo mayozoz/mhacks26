@@ -1,0 +1,8 @@
+# Only the title page is worth finding in search; game rooms are temporary.
+User-agent: *
+Allow: /$
+Disallow: /play
+Disallow: /screen
+Disallow: /dev/
+
+Sitemap: https://doodleffa.tech/sitemap.xml

@@ -11,6 +11,13 @@ const routes: Record<string, () => Promise<{ mount(el: HTMLElement): void | Prom
   '/dev/weapons': () => import('./routes/dev-weapons'),
 };
 
+// Only the title page belongs in search results; controller, screen and dev pages are noindex.
+if (location.pathname.replace(/\/$/, '') !== '') {
+  const robots = document.createElement('meta');
+  robots.name = 'robots'; robots.content = 'noindex';
+  document.head.appendChild(robots);
+}
+
 const el = document.getElementById('app')!;
 const load = routes[location.pathname.replace(/\/$/, '')];
 const showFailure = (error: unknown) => {
