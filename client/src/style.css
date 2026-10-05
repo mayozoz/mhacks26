@@ -203,3 +203,4 @@ input, select { font-size: 16px; } /* iOS zooms into inputs smaller than 16px */
 .service-notice p { margin: 6px 0 0; }
 .service-notice .when { color: #c9b48a; font-size: 12px; }
 @media (max-width: 600px) { .service-notice { position: static; width: auto; margin: 12px 16px; } }
+.service-notice .feature { color: #c9b48a; font-size: 12px; }

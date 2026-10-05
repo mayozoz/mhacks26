@@ -29,7 +29,7 @@ export function mountScreenDebug(conn: DbConnection, code: string) {
 
     for (const s of conn.db.serviceStatus.iter() as Iterable<ServiceRow>) {
       const d = describeService(s);
-      items.push({ level: 'error', text: `${d.headline} · ${d.when} · ${s.detail}` });
+      items.push({ level: 'error', text: `${d.feature} · ${d.when} · ${s.detail}` });
     }
 
     const players = [...conn.db.player.iter()].filter((p) => p.roomCode === code);

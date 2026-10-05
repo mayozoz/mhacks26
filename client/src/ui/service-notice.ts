@@ -23,25 +23,36 @@ const MEANWHILE: Record<string, string> = {
   commentator: 'the commentator stays quiet',
 };
 
-function fix(r: ServiceRow): string {
+/** Who gets roasted when a service breaks, and how to reach her. */
+const OWNER = 'Mei';
+const DISCORD = '@nyxieeeee';
+
+/** [what Mei hears, what everyone else should tell her to do]. Keeps the real fix in the joke. */
+function roast(r: ServiceRow): [string, string] {
+  const p = r.provider;
   switch (r.issue) {
-    case 'credits': return `Add credits to the ${r.provider} account.`;
-    case 'auth': return `Check the ${r.provider} key in .env, then rerun scripts/set-secrets.ts.`;
-    case 'rate_limit': return 'Wait a minute; it should recover.';
-    case 'unconfigured': return 'Add the missing setting to .env, then rerun scripts/set-secrets.ts.';
-    case 'unreachable': return r.provider.includes('agent') ? 'Check the agent is running and AGENT_URL is its current public (tunnel) URL.' : 'Check the network connection.';
-    case 'timeout': case 'provider_down': return 'The provider is having trouble; it may recover on its own.';
-    default: return 'Open ?debug for details.';
+    case 'credits': return [`${OWNER}, you're out of ${p} credits. Again. 💸`, `go feed the ${p} meter before the doodles riot`];
+    case 'auth': return [`${OWNER}, ${p} says your API key is fake. Rude, but accurate.`, 'check her keys (the API ones, not the car ones) in .env and rerun set-secrets'];
+    case 'rate_limit': return [`${OWNER}, ${p} needs a breather. You're asking too much (relatable).`, "touch grass for a minute; it'll recover on its own"];
+    case 'unconfigured': return [`${OWNER}, you never actually set up ${p}. Bold strategy.`, 'add the missing line to .env and rerun set-secrets'];
+    case 'unreachable': return p.includes('agent')
+      ? [`${OWNER}, the Weapon Smith wandered off. Nobody can find him.`, 'restart the agent and put the new tunnel URL in AGENT_URL']
+      : [`${OWNER}, ${p} has left the chat.`, 'check the internet (yes, really)'];
+    case 'timeout': return [`${OWNER}, ${p} fell asleep mid-request.`, "chill — it's slow, not broken (probably)"];
+    case 'provider_down': return [`${OWNER}, ${p} is on fire. Not the cool weapon kind.`, 'wait it out; it usually comes back'];
+    default: return [`${OWNER}, ${FEATURE[r.service] ?? r.service} broke in a new and exciting way.`, 'open ?debug and read the scary text'];
   }
 }
 
-/** "Weapon art (Gemini): out of credits — players see their own doodles." + how to fix. */
+/** Mei's roast, the "not Mei? text her" line, and what players get meanwhile. */
 export function describeService(r: ServiceRow, now = Date.now()) {
   const mins = Math.max(0, Math.round((now - r.at.toDate().getTime()) / 60000));
+  const [headline, ask] = roast(r);
   return {
-    headline: `${FEATURE[r.service] ?? r.service} (${r.provider}): ${PROBLEM[r.issue] ?? 'failing'}`,
-    meanwhile: MEANWHILE[r.service] ? `Until then, ${MEANWHILE[r.service]}.` : '',
-    fix: fix(r),
+    headline,
+    feature: `${FEATURE[r.service] ?? r.service} (${r.provider}): ${PROBLEM[r.issue] ?? 'failing'}`,
+    fix: `Not ${OWNER}? Text her on Discord ${DISCORD} and tell her to ${ask}.`,
+    meanwhile: MEANWHILE[r.service] ? `Meanwhile, ${MEANWHILE[r.service]} (honestly iconic).` : '',
     when: mins < 1 ? 'just now' : `${mins} min ago`,
   };
 }
@@ -59,7 +70,7 @@ export function mountServiceNotice(el: HTMLElement, conn: DbConnection): () => v
     box.hidden = rows.length === 0;
     box.innerHTML = rows.length ? `<strong>Host check · lobby only</strong>${rows.map((r) => {
       const d = describeService(r);
-      return `<p><b>${esc(d.headline)}</b> <span class="when">${d.when}</span><br>${esc(d.meanwhile)} ${esc(d.fix)}</p>`;
+      return `<p><b>${esc(d.headline)}</b> <span class="when">${d.when}</span><br><span class="feature">${esc(d.feature)}</span><br>${esc(d.fix)} ${esc(d.meanwhile)}</p>`;
     }).join('')}` : '';
   };
   conn.db.serviceStatus.onInsert(render); conn.db.serviceStatus.onUpdate(render); conn.db.serviceStatus.onDelete(render);
