@@ -1,0 +1,136 @@
+DOODLE FFA: HOW TO DEPLOY CHANGES
+=================================
+
+Nothing deploys automatically. `git push` only saves code to GitHub; it does not change the
+live site. There are 3 live pieces, and each has its own step:
+
+  What you changed                                What to do                       Live after
+  ----------------------------------------------  -------------------------------  ----------------------
+  Website: client/, packages/engine, images,      A. build + upload + invalidate   1-5 min after the
+  sounds, .env.production                                                          invalidation
+  Game server: server/                            B. publish to Maincloud          immediately
+  packages/spec (shared weapon rules)             A and B                          -
+  API keys / secrets in .env                      C. set-secrets for Maincloud     immediately
+
+Always also commit and push, so GitHub matches what is live.
+
+
+WHERE THINGS LIVE
+-----------------
+- Website:      https://doodleffa.tech (and https://www.doodleffa.tech)
+- S3 bucket:    doodleffa-site-565725315768-us-east-1-an   (us-east-1)
+- CloudFront:   distribution d7lt5jd9zivfc.cloudfront.net
+- Certificate:  ACM in us-east-1 for doodleffa.tech + www.doodleffa.tech. Renews itself as long as
+                the two "_..." CNAME records stay in Route 53. Never delete them.
+- DNS:          Route 53 hosted zone doodleffa.tech (registrar: Namify, nameservers = awsdns)
+- Game server:  SpacetimeDB Maincloud, database "doodleffa"
+                (your login must be c200f797...; check with `spacetime login show`)
+- Repos:        origin  -> github.com/mayozoz/mhacks26   (branch main,   xAI art)
+                sponsor -> github.com/mayozoz/DoodleFFA  (branch gemini, Gemini Nano Banana art)
+
+
+A. WEBSITE (S3 + CloudFront)
+----------------------------
+1. Check .env.production (repo root). It must say:
+       VITE_STDB_URI=wss://maincloud.spacetimedb.com
+       VITE_STDB_DB=doodleffa
+       VITE_PUBLIC_URL=https://doodleffa.tech
+   These are public settings, never API keys.
+
+2. Build:
+       pnpm -C client build
+   This creates client/dist.
+
+3. Upload to S3 (console: the bucket > Upload):
+   - Open client/dist in Finder, select EVERYTHING INSIDE it (Cmd+A) and drag that in.
+     Do NOT drag the dist folder itself, or the site breaks with "Access Denied".
+   - The bucket's top level should show index.html next to assets/, models/, music/, sfx/,
+     menu/, ability-icons/, dev-sprites/.
+   - Overwriting is fine. Old files in assets/ are harmless.
+   - .DS_Store files are Mac clutter; skip them if you can.
+
+4. Clear CloudFront's cache (console: CloudFront > the distribution > Invalidations >
+   Create invalidation) and enter:   /*
+   Why: index.html keeps the same name, so CloudFront may keep serving the old one, which points
+   at the old build. The JS/CSS files get new names every build, so they're never stale.
+
+5. Check: open https://doodleffa.tech (a private window avoids your browser cache) and
+   https://doodleffa.tech/screen. The lobby should show a room code and QR code.
+
+
+B. GAME SERVER (Maincloud)
+--------------------------
+1. Run the tests first:
+       pnpm -r test
+
+2. Publish (between games; a room in the middle of a round may glitch):
+       spacetime publish -s maincloud --module-path server --yes doodleffa
+
+3. Did you change the database tables (server/src/schema.ts)?
+   - Regenerate the client's bindings:
+       spacetime generate --lang typescript --out-dir client/src/module_bindings --module-path server
+   - Then redo A (build + upload + invalidate) so the website matches the server.
+   - If publish refuses because of a "breaking" table change, adding --delete-data makes it go
+     through, BUT it wipes the database, including the stored API keys. Redo C afterwards.
+
+4. If `spacetime` says "command not found": open a new terminal, run `source ~/.zshrc`, or use
+   ~/.local/bin/spacetime
+
+
+C. API KEYS / SECRETS (Maincloud)
+---------------------------------
+Keys live only in .env (gitignored) and in the server's private secrets table. Never put a key in
+a VITE_ variable or in any committed file.
+
+1. In .env, set SPEC_PROVIDER=asi1 for Maincloud. The Weapon Smith agent ("agent") only works
+   while your laptop and its tunnel are up.
+2. Run:
+       VITE_STDB_DB=doodleffa pnpm tsx scripts/set-secrets.ts maincloud
+   It prints "set <NAME>" for each key and never prints the values.
+3. If you want to use the agent locally again afterwards, set SPEC_PROVIDER=agent in .env and run:
+       pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
+4. Check: open https://doodleffa.tech/screen. If an AI service is out of credits or has a bad
+   key, the lobby shows a "Host check" notice that tells you which one and how to fix it.
+   ?debug on the screen URL shows full details.
+
+
+LOCAL DEVELOPMENT (your laptop, not live)
+-----------------------------------------
+- Game server:  spacetime start --listen-addr 0.0.0.0:3010
+- Publish:      spacetime publish -s http://127.0.0.1:3010 --module-path server --yes doodle-arena
+- Keys:         pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
+- Website:      pnpm -C client dev   -> http://localhost:5173/screen
+                (or: cd client && npx vite --host --port 5174 --strictPort -> port 5174)
+                Phones on the same Wi-Fi use the lobby's QR code.
+- .env needs STDB_LOCAL_URL=http://127.0.0.1:3010, because the dev server forwards the game
+  connection there.
+
+
+TWO VERSIONS (main and gemini)
+------------------------------
+- Working version:  git checkout main     -> push with: git push origin main:main
+- Sponsor version:  git checkout gemini   -> push with: git push sponsor gemini:main
+- Copy a fix from main to gemini:
+      git checkout gemini
+      git cherry-pick <commit>
+      git push sponsor gemini:main
+      git checkout main
+  Never merge main into gemini; that would bring back the switch to xAI.
+- After switching branches locally, republish the local server and rerun set-secrets, so it uses
+  the right art provider key.
+
+
+TROUBLESHOOTING
+---------------
+- "Access Denied" (XML) on the site: files aren't at the bucket's top level, or the bucket policy
+  doesn't allow the distribution. Check the Objects tab first.
+- "403 Bad request" from CloudFront on doodleffa.tech: the domain isn't listed under the
+  distribution's Alternate domain names, or no certificate is attached.
+- Security warning in the browser: the ACM certificate isn't attached to the distribution, or it
+  expired because the validation CNAMEs were deleted.
+- Site loads but can't reach the game server: .env.production has the wrong VITE_STDB_DB, or the
+  server wasn't published to Maincloud under that name.
+- Route 53 shows "Free Tier accounts are not supported": that's a banner for one part of the
+  console. Hosted zones still work; go straight to Route 53 > Hosted zones.
+- Credits: the game server's 20 Hz tick currently runs on Maincloud even when nobody is playing,
+  and uses SpacetimeDB credits. An idle-tick fix is planned but not done yet.
