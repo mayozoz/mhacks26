@@ -67,7 +67,8 @@ export function resultsOverlay(el: HTMLElement, conn: DbConnection, code: string
     })();
   });
 
-  el.querySelector<HTMLButtonElement>('#again')!.onclick = () => void conn.reducers.startRound({});
+  // Back to the QR-code lobby, so people can join or leave before the next round starts.
+  el.querySelector<HTMLButtonElement>('#again')!.onclick = () => void conn.reducers.backToLobby({});
   return () => { alive = false; stages.forEach((s) => s.destroy()); };
 }
 

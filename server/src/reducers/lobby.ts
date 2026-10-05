@@ -95,6 +95,14 @@ export const startRound = spacetimedb.reducer((ctx) => {
   enterPhase(ctx, { ...r, round: r.round + 1, seed: ctx.random.uint32() }, 'draw');
 });
 
+/** Shared screen's "Play again" on Results → back to the lobby (QR code), so players can join or leave first. */
+export const backToLobby = spacetimedb.reducer((ctx) => {
+  const r = [...ctx.db.room.iter()].find((x) => x.host.isEqual(ctx.sender));
+  if (!r) throw new SenderError('not a host');
+  if (r.phase !== 'results') return; // already back (Results also times out into the lobby)
+  enterPhase(ctx, r, 'lobby');
+});
+
 export const onDisconnect = spacetimedb.clientDisconnected((ctx) => {
   const p = ctx.db.player.identity.find(ctx.sender);
   if (!p) return;

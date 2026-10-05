@@ -88,7 +88,7 @@ a VITE_ variable or in any committed file.
        VITE_STDB_DB=doodleffa pnpm tsx scripts/set-secrets.ts maincloud
    It prints "set <NAME>" for each key and never prints the values.
 3. If you want to use the agent locally again afterwards, set SPEC_PROVIDER=agent in .env and run:
-       pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
+       VITE_STDB_DB=doodleffa pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
 4. Check: open https://doodleffa.tech/screen. If an AI service is out of credits or has a bad
    key, the lobby shows a "Host check" notice that tells you which one and how to fix it.
    ?debug on the screen URL shows full details.
@@ -97,8 +97,10 @@ a VITE_ variable or in any committed file.
 LOCAL DEVELOPMENT (your laptop, not live)
 -----------------------------------------
 - Game server:  spacetime start --listen-addr 0.0.0.0:3010
-- Publish:      spacetime publish -s http://127.0.0.1:3010 --module-path server --yes doodle-arena
-- Keys:         pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
+- Publish:      spacetime publish -s http://127.0.0.1:3010 --module-path server --yes doodleffa
+- Keys:         VITE_STDB_DB=doodleffa pnpm tsx scripts/set-secrets.ts http://127.0.0.1:3010
+- .env needs VITE_STDB_DB=doodleffa. The local database must be owned by the same login as
+  Maincloud; after a `spacetime login` change, publish a fresh local database.
 - Website:      pnpm -C client dev   -> http://localhost:5173/screen
                 (or: cd client && npx vite --host --port 5174 --strictPort -> port 5174)
                 Phones on the same Wi-Fi use the lobby's QR code.
