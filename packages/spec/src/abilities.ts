@@ -50,6 +50,8 @@ export interface AbilityObjectData {
   originX?: number; originY?: number;
   hits?: string[];
   returning?: boolean;
+  /** Presentation only: opponents actually damaged by drain on the latest tick. */
+  targets?: { id: string; x: number; y: number }[];
 }
 
 /** Gameplay tuning shared by simulation and presentation. Fractions use maximum HP. */

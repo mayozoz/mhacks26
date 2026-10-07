@@ -204,6 +204,7 @@ export function stepAbilityObjects(ctx: Ctx, r: RoomRow, all: Map<string, Fighte
     if (d.until <= now) { ctx.db.abilityObject.id.delete(row.id); continue; }
     if (d.start > now) continue;
     const owner = all.get(row.owner.toHexString());
+    if (d.kind === 'drain') d.targets = [];
     let remove = false;
     const ax = row.x, ay = row.y;
     if (d.kind === 'ring' || d.kind === 'drain') {
@@ -242,7 +243,11 @@ export function stepAbilityObjects(ctx: Ctx, r: RoomRow, all: Map<string, Fighte
       } else if (dist <= d.radius + hitRadius(o, now)) {
         if (d.kind === 'fire') setEffect(o, 'burn', now + T.burnSeconds, GAME.stormDps, row.owner.toHexString());
         if (d.kind === 'mushroom') { setEffect(o, 'poison', now + T.poisonSeconds, T.poisonDps, row.owner.toHexString()); remove = true; break; }
-        if (d.kind === 'drain' && owner && owner.hp > 0) owner.hp = Math.min(GAME.maxHp, owner.hp + dealOpponentDamage(ctx, o, row.owner.toHexString(), T.drainDps * dt, now));
+        if (d.kind === 'drain' && owner && owner.hp > 0) {
+          const dealt = dealOpponentDamage(ctx, o, row.owner.toHexString(), T.drainDps * dt, now);
+          owner.hp = Math.min(GAME.maxHp, owner.hp + dealt);
+          if (dealt > 0) d.targets!.push({ id, x: o.x, y: o.y });
+        }
         if (d.kind === 'bomb') {
           const hits = bombHits.get(d.hits![0]!)!;
           if (!hits.has(id)) { cue(ctx, r, o, dealOpponentDamage(ctx, o, row.owner.toHexString(), T.blastDamage, now)); hits.add(id); }

@@ -13,6 +13,8 @@ import { GAME, PROJECTILE } from '../../../../server/src/balance';
 import { secondsLeft, serverNowMs } from '../../net/clock';
 import type { DbConnection } from '../../module_bindings';
 import { hexToNum } from '../../ui/theme';
+import { AbilityVfxScene } from '../../vfx/scene';
+import { PixiAbilityVfx } from '../../vfx/pixi';
 import { drawStorm } from './storm-effects';
 
 // Display-only stand-in until the fighter's weapon row arrives. Never used for gameplay.
@@ -79,6 +81,8 @@ export class Arena {
   private shots = new Container();
   private projectiles = new Map<bigint, ProjectileView>();
   private abilityGraphics = new Graphics();
+  private abilityVfx = new AbilityVfxScene();
+  private abilitySprites = new PixiAbilityVfx();
   private projectileSprites = new Map<bigint, Sprite>();
   private blind = new Graphics();
   private blindUntil = new Timestamp(0n);
@@ -103,6 +107,8 @@ export class Arena {
     if (stage3d) this.ground.scale.y = Stage3D.groundScaleY;
     else this.world.addChild(this.grid.view);
     this.world.addChild(this.ground, this.actors, this.shots, this.fx, this.numbers);
+    this.world.addChildAt(this.abilitySprites.floor, this.world.getChildIndex(this.actors));
+    this.fx.addChild(this.abilitySprites.view);
     app.stage.addChild(this.world, this.blind);
     this.feedback = new Feedback(this.world, this.tweener, this.numbers);
     app.ticker.add((t) => this.frame(t.deltaMS / 1000));
@@ -484,9 +490,23 @@ export class Arena {
       v.char.view.zIndex = feet.y;
     }
     this.actors.sortableChildren = true;
+    this.drawSpecialEffects();
     this.drawProjectiles(simDt);
     this.stage3d?.render();
     // TODO: attach vfx emitters per weapon (vfx/index.ts).
+  }
+
+  private drawSpecialEffects() {
+    const now = serverNowMs() / 1000;
+    const fighters = this.phase === 'battle' ? [...this.conn.db.fighter.iter()].filter(f => f.roomCode === this.code).map(f => {
+      const s = this.fighters.get(f.player.toHexString())?.last;
+      return { id: f.player.toHexString(), x: s?.x ?? f.x, y: s?.y ?? f.y, facing: f.facing, hp: f.hp, effects: JSON.parse(f.effects) };
+    }) : [];
+    const objects = this.phase === 'battle' ? [...this.conn.db.abilityObject.iter()].filter(o => o.roomCode === this.code).map(o => ({
+      id: String(o.id), owner: o.owner.toHexString(), x: o.x, y: o.y, data: JSON.parse(o.data) as AbilityObjectData,
+    })) : [];
+    this.abilitySprites.update(this.abilityVfx.build({ now, fighters, objects }), this.unit,
+      (x, y, h) => this.toScreen(x, y, h), owner => this.fighters.get(owner)?.weapon);
   }
 
   private drawAbilities(dt: number) {
@@ -504,7 +524,7 @@ export class Arena {
       }
       if (d.kind === 'freeze') g.rect(x - radius, y - radius, radius * 2, radius * 2).fill({ color: 0x88ddff, alpha: 0.4 });
       else if (d.kind === 'wall') g.rect(x - radius, y - radius, radius * 2, radius * 2).stroke({ color: 0x66ccff, width: 7 });
-      else if (d.kind === 'ring') g.circle(x, y, radius).stroke({ color: 0xff6600, width: this.unit * 0.7, alpha: 0.7 });
+      else if (['fire', 'ring', 'mushroom', 'drain'].includes(d.kind)) continue; // Rendered by the requested VFX above.
       else if (d.kind === 'boomerang') {
         active.add(row.id);
         let sprite = this.projectileSprites.get(row.id);
