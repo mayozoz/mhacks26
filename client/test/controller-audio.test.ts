@@ -93,3 +93,30 @@ it('retries a failed Reveal request once when Battle begins', async () => {
   expect(await coordinator.announce()).toBe(true);
   expect(generate).toHaveBeenCalledTimes(2);
 });
+it('announces on the weapon display during Drop and stops when deployment opens', async () => {
+  const { coordinator, room, generate } = setup();
+  room.phase = 'drop';
+  coordinator.sync();
+  expect(generate).not.toHaveBeenCalled();
+  const stop = vi.fn();
+  audio.playVoice.mockResolvedValue(stop);
+  coordinator.setWeaponDisplay(true);
+  await vi.waitFor(() => expect(audio.playVoice).toHaveBeenCalledTimes(1));
+  coordinator.setWeaponDisplay(false);
+  expect(stop).toHaveBeenCalledOnce();
+  room.phase = 'reveal';
+  await coordinator.announce();
+  expect(generate).toHaveBeenCalledOnce();
+  expect(audio.playVoice).toHaveBeenCalledOnce();
+});
+it('discards late speech after leaving the weapon display for deployment', async () => {
+  const { coordinator, generate, room } = setup();
+  room.phase = 'drop';
+  let resolve!: (url: string) => void;
+  generate.mockImplementation(() => new Promise(r => { resolve = r; }));
+  coordinator.setWeaponDisplay(true);
+  coordinator.setWeaponDisplay(false);
+  resolve('speech.mp3');
+  await Promise.resolve(); await Promise.resolve();
+  expect(audio.playVoice).not.toHaveBeenCalled();
+});

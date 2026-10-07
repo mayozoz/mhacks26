@@ -60,3 +60,10 @@ it('strips whitespace from the key and configured voice', () => {
   expect(fetch.mock.calls[0]![1].headers['xi-api-key']).toBe('test-key');
   expect(fetch.mock.calls[0]![0]).toContain('/text-to-speech/custom-voice?');
 });
+it('supports announcements during the phone weapon display in Drop', () => {
+  room.phase = 'drop';
+  expect(run(ctx)).toBe('data:audio/mpeg;base64,SUQz');
+  room.phase = 'reveal';
+  expect(run(ctx)).toBe('data:audio/mpeg;base64,SUQz');
+  expect(fetch).toHaveBeenCalledOnce();
+});

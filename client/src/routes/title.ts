@@ -38,5 +38,4 @@ export function mount(el: HTMLElement) {
     event.preventDefault(); start();
   };
   document.addEventListener('keydown', enter);
-  window.addEventListener('pagehide', () => { music.destroy(); document.removeEventListener('keydown', enter); }, { once: true });
 }

@@ -25,6 +25,7 @@ beforeEach(() => {
   preferences = new Map();
   documentMock = Object.assign(new EventTarget(), { hidden: false });
   vi.stubGlobal('Audio', FakeAudio); vi.stubGlobal('document', documentMock);
+  vi.stubGlobal('window', new EventTarget());
   vi.stubGlobal('localStorage', { getItem: (key: string) => preferences.get(key) ?? null, setItem: (key: string, value: string) => preferences.set(key, value) });
 });
 it('defaults to on: shows "Music on" and tries a quiet looping track right away', async () => {
@@ -60,4 +61,39 @@ it('handles blocked playback and stops playback when leaving the menu', async ()
   music.start(); await Promise.resolve(); await Promise.resolve(); expect(button.title).toContain('retry');
   music.destroy(); const attempts = latest.play.mock.calls.length;
   button.dispatchEvent(new Event('click')); music.start(); expect(latest.play.mock.calls.length).toBe(attempts); expect(latest.paused).toBe(true);
+});
+it('resumes after browser Back restores the page from cache', async () => {
+  const { music } = setup();
+  await Promise.resolve();
+  window.dispatchEvent(new Event('pagehide'));
+  expect(latest.paused).toBe(true);
+  window.dispatchEvent(new Event('pageshow'));
+  await Promise.resolve();
+  expect(latest.paused).toBe(false);
+  music.destroy();
+  const attempts = latest.play.mock.calls.length;
+  window.dispatchEvent(new Event('pageshow'));
+  expect(latest.play.mock.calls.length).toBe(attempts);
+});
+it('keeps music paused during a match, including after visibility and page restoration', async () => {
+  const { music } = setup();
+  await Promise.resolve();
+  music.setAllowed(false);
+  window.dispatchEvent(new Event('pageshow'));
+  documentMock.dispatchEvent(new Event('pointerdown'));
+  expect(latest.paused).toBe(true);
+  music.setAllowed(true);
+  await Promise.resolve();
+  expect(latest.paused).toBe(false);
+  music.destroy();
+});
+it('retries blocked music on the button instead of muting the enabled setting', async () => {
+  blockFirstPlay = true;
+  const { music, button } = setup();
+  await Promise.resolve(); await Promise.resolve();
+  button.dispatchEvent(new Event('click'));
+  await Promise.resolve();
+  expect(latest.paused).toBe(false);
+  expect(button.attributes.get('aria-pressed')).toBe('true');
+  music.destroy();
 });

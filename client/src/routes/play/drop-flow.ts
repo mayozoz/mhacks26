@@ -6,6 +6,7 @@ import { weaponGuide } from './weapon-guide';
 import type { View } from './types';
 import './drop.css';
 import { abilityIcon, ABILITY_ACCENTS } from '../../ui/ability-icons';
+import { resumeAudio } from '../../audio/sfx';
 
 const IDS = Object.keys(ABILITIES) as AbilityId[];
 const STEPS = ['Roll', 'Special', 'Weapon', 'Deploy'];
@@ -35,6 +36,7 @@ export const dropView: View = (ctx) => {
   };
   const render = () => {
     const current = ++version;
+    ctx.audio?.setWeaponDisplay(step === 2);
     stage?.destroy(); stage = null;
     nav.innerHTML = STEPS.map((name, i) => `<span class="${i === step ? 'is-current' : i < step ? 'is-done' : ''}" ${i === step ? 'aria-current="step"' : ''}>${i + 1} ${name}</span>`).join('');
     if (step === 0) {
@@ -82,7 +84,17 @@ export const dropView: View = (ctx) => {
     } else if (step === 2) {
       const w = ctx.conn.db.weapon.player.find(ctx.identity);
       const stored = w?.spec ? JSON.parse(w.spec) as StoredWeapon : null;
-      body.innerHTML = `<span class="prep-eyebrow">YOUR WEAPON</span><h1 class="prep-weapon-name"></h1><div class="prep-weapon-art"></div><div class="prep-weapon-guide"></div><button class="prep-next">Pick deployment spot →</button>`;
+      body.innerHTML = `<span class="prep-eyebrow">YOUR WEAPON</span><h1 class="prep-weapon-name"></h1><div class="prep-weapon-art"></div><button class="prep-hear" type="button">Hear weapon</button><p class="prep-voice-status" role="status"></p><div class="prep-weapon-guide"></div><button class="prep-next">Pick deployment spot →</button>`;
+      const hear = body.querySelector<HTMLButtonElement>('.prep-hear')!;
+      hear.disabled = !stored;
+      hear.onclick = async () => {
+        const ready = resumeAudio();
+        hear.disabled = true; hear.textContent = 'Listening…';
+        const played = await ready && await ctx.audio?.announce(true);
+        if (!active || current !== version) return;
+        hear.disabled = false; hear.textContent = played ? 'Hear weapon' : 'Tap to retry';
+        body.querySelector('.prep-voice-status')!.textContent = played ? '' : 'Could not play the announcement. Tap to retry.';
+      };
       const deploy = body.querySelector<HTMLButtonElement>('.prep-next')!;
       deploy.disabled = !stored;
       if (!stored) deploy.textContent = 'Receiving your weapon…';
@@ -131,5 +143,5 @@ export const dropView: View = (ctx) => {
   ctx.conn.db.weapon.onUpdate(onWeapon);
   const swing = window.setInterval(() => stage?.swing(), 2200);
   render();
-  return () => { active = false; stopCd(); timers.forEach(clearTimeout); clearInterval(swing); stage?.destroy(); ctx.conn.db.weapon.removeOnUpdate(onWeapon); };
+  return () => { active = false; ctx.audio?.setWeaponDisplay(false); stopCd(); timers.forEach(clearTimeout); clearInterval(swing); stage?.destroy(); ctx.conn.db.weapon.removeOnUpdate(onWeapon); };
 };

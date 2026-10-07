@@ -12,6 +12,16 @@ export class ControllerAudio {
   private pending: { key: string; promise: Promise<string> } | null = null;
   private stopVoice: (() => void) | null = null;
   private voiceVersion = 0;
+  private weaponDisplay = false;
+
+  setWeaponDisplay(visible: boolean) {
+    this.weaponDisplay = visible;
+    this.sync();
+  }
+
+  private canAnnounce(phase: string) {
+    return ['reveal', 'battle'].includes(phase) || (phase === 'drop' && this.weaponDisplay);
+  }
 
   constructor(private ctx: PlayCtx) {
     const { conn, identity } = ctx;
@@ -45,7 +55,7 @@ export class ControllerAudio {
     } else if (w?.sfxUrl) {
       preloadWeaponSound('swing', w.sfxUrl);
     }
-    if (r && ['reveal', 'battle'].includes(r.phase)) void this.announce();
+    if (r && this.canAnnounce(r.phase)) void this.announce();
     else {
       this.voiceVersion++;
       this.stopVoice?.();
@@ -57,7 +67,7 @@ export class ControllerAudio {
     const { conn, identity, roomCode } = this.ctx;
     const room = conn.db.room.code.find(roomCode);
     const w = conn.db.weapon.player.find(identity);
-    if (!room || !w?.spec || !['reveal', 'battle'].includes(room.phase)) return false;
+    if (!room || !w?.spec || !this.canAnnounce(room.phase)) return false;
     const name = (JSON.parse(w.spec) as StoredWeapon).spec.name;
     const key = `${roomCode}:${room.round}:${name}`;
     if (!replay && this.played === key) return true;
@@ -68,7 +78,7 @@ export class ControllerAudio {
     const relevant = () => {
       const r = conn.db.room.code.find(roomCode);
       return this.voiceVersion === version && r?.round === room.round && r.code === this.ctx.roomCode
-        && ['reveal', 'battle'].includes(r.phase);
+        && this.canAnnounce(r.phase);
     };
     this.stopVoice?.();
     this.stopVoice = null;
