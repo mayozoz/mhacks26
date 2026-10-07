@@ -13,6 +13,7 @@ import { GAME, PROJECTILE } from '../../../../server/src/balance';
 import { secondsLeft, serverNowMs } from '../../net/clock';
 import type { DbConnection } from '../../module_bindings';
 import { hexToNum } from '../../ui/theme';
+import { drawStorm } from './storm-effects';
 
 // Display-only stand-in until the fighter's weapon row arrives. Never used for gameplay.
 const PLACEHOLDER: StoredWeapon = {
@@ -71,6 +72,7 @@ export class Arena {
   /** faint ring at the arena wall — fighters are clamped to it, so keep it visible */
   private edge = new Graphics();
   private storm = new Graphics();
+  private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   private markers = new Container();
   private actors = new Container();
   private fx = new Container();
@@ -422,8 +424,8 @@ export class Arena {
     this.edge.clear().rect(-hw * this.unit, -hh * this.unit, 2 * hw * this.unit, 2 * hh * this.unit).stroke({ color: 0x5a5a5a, width: 2, alpha: 0.6 });
     this.storm.clear();
     if (this.phase === 'battle') {
-      this.storm.rect(-5000, -5000, 10000, 10000).fill({ color: 0x6b2bd9, alpha: 0.25 })
-        .circle(r.stormX * this.unit, r.stormY * this.unit, r.stormR * this.unit).cut();
+      drawStorm(this.storm, r.stormX * this.unit, r.stormY * this.unit, r.stormR * this.unit,
+        this.unit, hw * this.unit, hh * this.unit, performance.now() / 1000, this.reducedMotion.matches);
     }
 
     this.drawDropMarkers();
