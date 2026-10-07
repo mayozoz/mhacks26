@@ -1,11 +1,14 @@
 export interface StickFigurePose {
   x: number; y: number; color: string; facing: number; scale: number;
   stride: number; attacking: boolean; hurt: number; frozen: boolean; weaponScale: number; empowered: boolean;
+  hideWeapon?: boolean;
+  grayscale?: boolean;
 }
 
 /** Readable arena character: head, body, arms, walking legs, weapon and hit reaction. */
 export function drawStickFigure(g: CanvasRenderingContext2D, p: StickFigurePose) {
   g.save();
+  if(p.grayscale)g.filter='grayscale(1)';
   g.translate(p.x + Math.sin(p.hurt * 35) * p.hurt * 7, p.y);
   g.scale(p.scale * (Math.cos(p.facing) < 0 ? -1 : 1), p.scale);
   g.rotate(p.hurt * -.2);
@@ -30,11 +33,13 @@ export function drawStickFigure(g: CanvasRenderingContext2D, p: StickFigurePose)
     g.fillStyle = '#11101b'; g.beginPath(); g.arc(0,-24,1.6,0,Math.PI*2); g.arc(6,-24,1.6,0,Math.PI*2); g.fill();
     g.beginPath(); g.arc(3,-21,3,0,Math.PI); g.stroke();
   }
+  if (!p.hideWeapon) {
   const angle = p.attacking ? -.9 + Math.sin(p.stride * 2) * .65 : -.45;
   g.save(); g.translate(14, arm); g.rotate(angle);
   g.fillStyle = p.empowered ? '#fbbf24' : '#fff'; g.strokeStyle = '#11101b'; g.lineWidth = 2;
   g.beginPath(); g.moveTo(1,-3); g.lineTo(26*p.weaponScale,-3); g.lineTo(34*p.weaponScale,0); g.lineTo(26*p.weaponScale,3); g.lineTo(1,3); g.closePath(); g.fill(); g.stroke();
   g.beginPath(); g.moveTo(0,-7); g.lineTo(0,7); g.strokeStyle = '#c4b5fd'; g.lineWidth = 4; g.stroke(); g.restore();
+  }
   if (p.frozen) {
     g.fillStyle = '#7dd3fc30'; g.strokeStyle = '#7dd3fc'; g.lineWidth = 3;
     g.beginPath(); g.moveTo(-19,-36); g.lineTo(18,-32); g.lineTo(23,30); g.lineTo(-20,30); g.closePath(); g.fill(); g.stroke();

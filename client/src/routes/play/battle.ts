@@ -1,7 +1,8 @@
 import { Timestamp } from 'spacetimedb';
 import nipplejs from 'nipplejs';
 import { ABILITIES, ABILITY_TUNING, isAbilityId, MAX_HP, type StoredWeapon } from '@doodle/spec';
-import { secondsLeft } from '../../net/clock';
+import { secondsLeft, serverNowMs } from '../../net/clock';
+import { mountAbilityBlindness } from '../../ui/ability-blindness';
 import { mountDamageFeedback } from './damage-feedback';
 import { click, resumeAudio } from '../../audio/sfx';
 import { mountRotateHint } from '../../ui/rotate-hint';
@@ -64,6 +65,14 @@ export const battleView: View = (ctx) => {
   }, 1000 / SEND_HZ);
 
   const stopDamageFeedback = mountDamageFeedback(ctx);
+  let blindUntil = 0;
+  const stopBlind = mountAbilityBlindness(ctx.el, () => {
+    for (const o of ctx.conn.db.abilityObject.iter()) if (o.roomCode === ctx.roomCode) {
+      const d = JSON.parse(o.data) as { kind: string; until: number };
+      if (d.kind === 'blind') blindUntil = Math.max(blindUntil, d.until);
+    }
+    return { now: serverNowMs() / 1000, until: blindUntil, battle: true };
+  });
 
   // Every press: local bounce + click. Vibration is reserved for received damage.
   const btn = ctx.el.querySelector<HTMLButtonElement>('#atk')!;
@@ -129,6 +138,7 @@ export const battleView: View = (ctx) => {
 
   return () => {
     stopDamageFeedback();
+    stopBlind();
     active = false;
     clearInterval(sender);
     cancelAnimationFrame(raf);

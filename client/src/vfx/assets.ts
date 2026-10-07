@@ -1,7 +1,7 @@
 import bounds from './asset-bounds.json';
 
 export type VfxAsset = keyof typeof bounds;
-export const VFX_ASSETS = ['anger-mark', 'poison-mushroom'] as VfxAsset[];
+export const VFX_ASSETS = Object.keys(bounds) as VfxAsset[];
 const images = new Map<VfxAsset, HTMLCanvasElement>();
 let loading: Promise<void> | undefined;
 export const assetImage = (name: VfxAsset) => images.get(name);

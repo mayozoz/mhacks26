@@ -79,6 +79,7 @@ export async function mount(el: HTMLElement) {
           .subscribe([
             `SELECT * FROM room WHERE code = '${code}'`,
             `SELECT * FROM player WHERE room_code = '${code}'`,
+            `SELECT * FROM ability_object WHERE room_code = '${code}'`,
             `SELECT * FROM fighter WHERE player = 0x${me}`,
             // Only opponent-inflicted damage addressed to this controller.
             `SELECT * FROM fx_event WHERE room_code = '${code}' AND owner = 0x${me} AND type = 'damage'`,

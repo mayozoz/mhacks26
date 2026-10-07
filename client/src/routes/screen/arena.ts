@@ -6,16 +6,17 @@ import {
   type CharacterAsset, type EdgePoints,
 } from '@doodle/engine';
 import {
-  ABILITY_TUNING, DEFAULT_SWING, MAX_HP, arenaExtents, colorForSlot, isAbilityId,
+  ABILITY_TUNING, DEFAULT_SWING, MAX_HP, arenaExtents, colorForSlot,
   type AbilityObjectData, type FighterEffects, type Marker, type Phase, type ProjectileMeta, type StoredWeapon,
 } from '@doodle/spec';
 import { GAME, PROJECTILE } from '../../../../server/src/balance';
 import { secondsLeft, serverNowMs } from '../../net/clock';
 import type { DbConnection } from '../../module_bindings';
 import { hexToNum } from '../../ui/theme';
-import { AbilityVfxScene } from '../../vfx/scene';
-import { PixiAbilityVfx } from '../../vfx/pixi';
 import { drawStorm } from './storm-effects';
+import { AbilityVfxScene, type VfxFrame } from '../../vfx/scene';
+import { PixiAbilityVfx } from '../../vfx/pixi';
+import { ThreeAbilityVfx } from '../../vfx/three';
 
 // Display-only stand-in until the fighter's weapon row arrives. Never used for gameplay.
 const PLACEHOLDER: StoredWeapon = {
@@ -80,9 +81,11 @@ export class Arena {
   private fx = new Container();
   private shots = new Container();
   private projectiles = new Map<bigint, ProjectileView>();
-  private abilityGraphics = new Graphics();
-  private abilityVfx = new AbilityVfxScene();
-  private abilitySprites = new PixiAbilityVfx();
+  private vfxScene = new AbilityVfxScene();
+  private vfx2d = new PixiAbilityVfx();
+  private vfx3d: ThreeAbilityVfx | null = null;
+  private disposed = false;
+  private cleanups: (() => void)[] = [];
   private projectileSprites = new Map<bigint, Sprite>();
   private blind = new Graphics();
   private blindUntil = new Timestamp(0n);
@@ -103,16 +106,17 @@ export class Arena {
     private stage3d: Stage3D | null,
     private asset: CharacterAsset | null,
   ) {
-    this.ground.addChild(this.edge, this.storm, this.markers, this.abilityGraphics);
+    this.ground.addChild(this.edge, this.storm, this.markers);
     if (stage3d) this.ground.scale.y = Stage3D.groundScaleY;
     else this.world.addChild(this.grid.view);
-    this.world.addChild(this.ground, this.actors, this.shots, this.fx, this.numbers);
-    this.world.addChildAt(this.abilitySprites.floor, this.world.getChildIndex(this.actors));
-    this.fx.addChild(this.abilitySprites.view);
+    this.world.addChild(this.ground, this.vfx2d.floor, this.actors, this.shots, this.fx, this.numbers);
     app.stage.addChild(this.world, this.blind);
     this.feedback = new Feedback(this.world, this.tweener, this.numbers);
     app.ticker.add((t) => this.frame(t.deltaMS / 1000));
+    this.fx.addChild(this.vfx2d.view);
+    if (stage3d) this.vfx3d = new ThreeAbilityVfx(stage3d.scene, stage3d.camera,asset);
     this.wire();
+
   }
 
   static async create(host: HTMLElement, conn: DbConnection): Promise<Arena> {
@@ -144,6 +148,7 @@ export class Arena {
 
   setRoom(code: string) { this.code = code; }
   setPhase(p: Phase) {
+    if (p !== this.phase) { this.vfxScene.reset(); this.vfx2d.reset(); this.vfx3d?.reset(); this.blindUntil=new Timestamp(0n); }
     this.phase = p;
     if (p === 'draw' || p === 'lobby') {
       // Round boundary: drop every fighter and every weapon texture, so nobody's old doodle
@@ -157,10 +162,14 @@ export class Arena {
 
   private wire() {
     const c = this.conn;
+    const watch = <K extends 'onInsert'|'onUpdate'|'onDelete', T extends Record<K, (callback: any) => void>>(table:T, kind:K, callback:Parameters<T[K]>[0]) => {
+      table[kind](callback);
+      this.cleanups.push(() => (table as any)[kind.replace('on','removeOn')](callback));
+    };
     const mine = (roomCode: string) => roomCode === this.code;
 
-    c.db.fighter.onInsert((_e, f) => { if (mine(f.roomCode)) void this.ensureFighter(f.player.toHexString()); });
-    c.db.fighter.onUpdate((_e, _old, f) => {
+    watch(c.db.fighter, 'onInsert', (_e, f) => { if (mine(f.roomCode)) void this.ensureFighter(f.player.toHexString()); });
+    watch(c.db.fighter, 'onUpdate', (_e, _old, f) => {
       if (!mine(f.roomCode)) return;
       const v = this.fighters.get(f.player.toHexString());
       if (!v) return;
@@ -173,18 +182,12 @@ export class Arena {
         this.playAttack(v, f.facing);
       }
     });
-    c.db.fighter.onDelete((_e, f) => this.removeFighter(f.player.toHexString()));
+    watch(c.db.fighter, 'onDelete', (_e, f) => this.removeFighter(f.player.toHexString()));
 
-    c.db.fxEvent.onInsert((_e, ev) => {
+    watch(c.db.fxEvent, 'onInsert', (_e, ev) => {
       if (!mine(ev.roomCode)) return;
       const { x, y } = this.toScreen(ev.x, ev.y, 1.2);
       if (ev.type === 'blind') this.blindUntil = new Timestamp(ev.createdAt.microsSinceUnixEpoch + BigInt(Math.round(ev.value * 1e6)));
-      if (isAbilityId(ev.type)) {
-        const cue = new Graphics().circle(0, 0, this.unit * 0.7).stroke({ color: 0xffdd66, width: 3 });
-        cue.position.set(x, y); this.fx.addChild(cue);
-        void this.tweener.to(0.4, t => { cue.alpha = 1 - t; cue.scale.set(1 + t); }).then(() => cue.destroy());
-        // The persistent zones below communicate ability range and duration.
-      }
       if (ev.type === 'hit') {
         const attacker = this.fighters.get(ev.owner.toHexString());
         const weight = attacker?.stored.spec.motion.weight ?? 0.5;
@@ -200,25 +203,26 @@ export class Arena {
       }
     });
 
-    c.db.projectile.onInsert((_e, p) => { if (mine(p.roomCode)) this.addProjectile(p); });
-    c.db.projectile.onUpdate((_e, _o, p) => {
+    watch(c.db.projectile, 'onInsert', (_e, p) => { if (mine(p.roomCode)) this.addProjectile(p); });
+    watch(c.db.projectile, 'onUpdate', (_e, _o, p) => {
       const v = this.projectiles.get(p.id);
       if (!v) return;
       v.interp.push(p.x, p.y, Math.atan2(p.vy, p.vx));
       try { v.meta = JSON.parse(p.hits) as ProjectileMeta; } catch { /* keep last */ }
     });
-    c.db.projectile.onDelete((_e, p) => this.removeProjectile(p.id));
+    watch(c.db.projectile, 'onDelete', (_e, p) => this.removeProjectile(p.id));
 
     // When a weapon row changes (fallback/AI spec, sprite URL), rebuild that fighter's weapon.
     const prepareWeapon = (w: { roomCode: string; player: { toHexString(): string }; spec: string; sfxUrl: string }) => {
       if (!mine(w.roomCode)) return;
       void this.refreshWeapon(w.player.toHexString());
     };
-    c.db.weapon.onInsert((_e, w) => prepareWeapon(w));
-    c.db.weapon.onUpdate((_e, _o, w) => prepareWeapon(w));
+    watch(c.db.weapon, 'onInsert', (_e, w) => prepareWeapon(w));
+    watch(c.db.weapon, 'onUpdate', (_e, _o, w) => prepareWeapon(w));
   }
 
   private async ensureFighter(hex: string) {
+    if(this.disposed)return;
     if (this.fighters.has(hex)) return;
     const p = [...this.conn.db.player.iter()].find((x) => x.identity.toHexString() === hex);
     if (!p) return;
@@ -252,12 +256,13 @@ export class Arena {
     let raw = false;
     if (row?.spriteUrl) tex = await this.loadUrl(row.spriteUrl);
     if (!tex && doodle) { tex = await this.loadPng(hex, doodle.png); raw = true; }
-    if (!tex) return;
+    if (!tex || this.disposed || this.fighters.get(hex)!==v) return;
 
     v.weapon?.destroy();
     v.decor?.destroy();
     v.weapon = createWeaponSprite(tex, v.stored, this.unit, raw);
     v.weaponUnit = this.unit;
+    this.vfx3d?.setWeapon(hex,tex.source.resource as TexImageSource,v.weapon.width/this.unit,v.weapon.height/this.unit);
     baseFilters.set(v.weapon, v.weapon.filters ? [...v.weapon.filters] : []);
     v.decor = new WeaponDecor(tex, this.edges.get(tex) ?? [], v.stored.spec, v.weapon.scale.x);
     v.char.hand.addChild(v.decor.back, v.weapon, v.decor.front); // upgrades behind + in front
@@ -279,6 +284,7 @@ export class Arena {
     if (cached) return cached;
     try {
       const canvas = await loadCutout(src);
+      if(this.disposed)return null;
       const tex = Texture.from(canvas);
       this.edges.set(tex, edgePoints(canvas));
       this.textures.set(key, tex);
@@ -397,6 +403,7 @@ export class Arena {
   }
 
   private removeFighter(hex: string) {
+    this.vfx3d?.removeWeapon(hex);
     const v = this.fighters.get(hex);
     v?.char.view.destroy({ children: true });
     v?.body3d?.dispose();
@@ -409,6 +416,7 @@ export class Arena {
   }
 
   private frame(dt: number) {
+    if (this.disposed) return;
     const simDt = this.feedback.step(dt);
     this.tweener.step(dt);
     const r = this.conn.db.room.code.find(this.code);
@@ -435,7 +443,6 @@ export class Arena {
     }
 
     this.drawDropMarkers();
-    this.drawAbilities(dt);
     this.blind.clear();
     if (this.phase === 'battle' && secondsLeft(this.blindUntil) > 0)
       this.blind.rect(0, 0, this.app.screen.width, this.app.screen.height).fill(0xffffff);
@@ -451,7 +458,7 @@ export class Arena {
       const immunity = live('invisible');
       v.body3d?.setAppearance(scale, immunity, live('frozen'));
       for (const part of [v.char.body, v.char.head, v.char.ring]) {
-        part.scale.set(v.body3d ? 1 : scale);
+        part.scale.set(v.body3d ? 1 : scale*this.unit/v.char.unit);
         part.filters = immunity ? [v.grayscale] : [];
         part.alpha = immunity ? 0.65 : 1;
       }
@@ -490,64 +497,53 @@ export class Arena {
       v.char.view.zIndex = feet.y;
     }
     this.actors.sortableChildren = true;
-    this.drawSpecialEffects();
+    this.drawAbilities(dt);
     this.drawProjectiles(simDt);
     this.stage3d?.render();
     // TODO: attach vfx emitters per weapon (vfx/index.ts).
   }
 
-  private drawSpecialEffects() {
+  private drawAbilities(dt: number) {
     const now = serverNowMs() / 1000;
-    const fighters = this.phase === 'battle' ? [...this.conn.db.fighter.iter()].filter(f => f.roomCode === this.code).map(f => {
-      const s = this.fighters.get(f.player.toHexString())?.last;
-      return { id: f.player.toHexString(), x: s?.x ?? f.x, y: s?.y ?? f.y, facing: f.facing, hp: f.hp, effects: JSON.parse(f.effects) };
-    }) : [];
-    const objects = this.phase === 'battle' ? [...this.conn.db.abilityObject.iter()].filter(o => o.roomCode === this.code).map(o => ({
-      id: String(o.id), owner: o.owner.toHexString(), x: o.x, y: o.y, data: JSON.parse(o.data) as AbilityObjectData,
-    })) : [];
-    this.abilitySprites.update(this.abilityVfx.build({ now, fighters, objects }), this.unit,
-      (x, y, h) => this.toScreen(x, y, h), owner => this.fighters.get(owner)?.weapon);
+    const objects = this.phase === 'battle' ? [...this.conn.db.abilityObject.iter()].filter(o => o.roomCode === this.code) : [];
+    const frame: VfxFrame = {
+      now,
+      objects: objects.map(o => ({ id:String(o.id),owner:o.owner.toHexString(),x:o.x,y:o.y,data:JSON.parse(o.data) })),
+      fighters: this.phase === 'battle' ? [...this.conn.db.fighter.iter()].filter(f=>f.roomCode===this.code).map(f=>({ id:f.player.toHexString(),x:f.x,y:f.y,facing:f.facing,hp:f.hp,effects:JSON.parse(f.effects),attackAt:Number(f.lastAttackAt.microsSinceUnixEpoch)/1e6 })) : [],
+      events: this.phase === 'battle' ? [...this.conn.db.fxEvent.iter()].filter(e=>e.roomCode===this.code).map(e=>({id:String(e.id),owner:e.owner.toHexString(),type:e.type,x:e.x,y:e.y,at:Number(e.createdAt.microsSinceUnixEpoch)/1e6,value:e.value})) : [],
+    };
+    const marks = this.vfxScene.build(frame);
+    for(const o of frame.objects)if(o.data.kind==='boomerang'&&o.data.until>now)marks.push({kind:'weapon',owner:o.owner,x:o.x,y:o.y,h:.8,size:1,alpha:1,rotation:now*12});
+    if(frame.objects.some(o=>o.data.kind==='bomb'&&now>=o.data.start&&now-o.data.start<.1))this.feedback.shake(2);
+    this.vfx3d?.update(marks);
+    this.vfx2d.update(this.vfx3d ? marks.filter(m=>m.kind==='text'||m.attachment) : marks, this.unit, (x,y,h)=>this.toScreen(x,y,h),
+      owner => this.fighters.get(owner)?.weapon);
+    const active = new Set<bigint>();
+    for (const row of objects) {
+      const d = JSON.parse(row.data) as AbilityObjectData;
+      if(d.until<=now) continue;
+      if(d.kind==='blind') this.blindUntil=new Timestamp(BigInt(Math.round(d.until*1e6)));
+      if(d.kind!=='boomerang'||this.vfx3d) continue;
+      active.add(row.id);
+      let sprite=this.projectileSprites.get(row.id);
+      const owner=this.fighters.get(row.owner.toHexString());
+      if(!sprite&&owner?.weapon){
+        sprite=new Sprite(owner.weapon.texture);sprite.anchor.set(.5);
+        this.fx.addChild(sprite);this.projectileSprites.set(row.id,sprite);
+      }
+      if(sprite){const p=this.toScreen(row.x,row.y,.8);sprite.position.set(p.x,p.y);sprite.rotation+=dt*12;
+        const zoom=this.unit/(owner?.weaponUnit||this.unit);sprite.width=(owner?.weapon?.width??this.unit)*zoom;sprite.height=(owner?.weapon?.height??this.unit)*zoom;}
+    }
+    for(const [id,sprite] of this.projectileSprites) if(!active.has(id)){sprite.destroy();this.projectileSprites.delete(id);}
   }
 
-  private drawAbilities(dt: number) {
-    const g = this.abilityGraphics.clear();
-    const active = new Set<bigint>();
-    if (this.phase === 'battle') for (const row of this.conn.db.abilityObject.iter()) {
-      if (row.roomCode !== this.code) continue;
-      const d = JSON.parse(row.data) as AbilityObjectData;
-      if (secondsLeft(new Timestamp(BigInt(Math.round(d.until * 1e6)))) <= 0) continue;
-      const x = row.x * this.unit, y = row.y * this.unit, radius = d.radius * this.unit;
-      const pending = secondsLeft(new Timestamp(BigInt(Math.round(d.start * 1e6)))) > 0;
-      if (d.kind === 'blind') {
-        this.blindUntil = new Timestamp(BigInt(Math.round(d.until * 1e6)));
-        continue;
-      }
-      if (d.kind === 'freeze') g.rect(x - radius, y - radius, radius * 2, radius * 2).fill({ color: 0x88ddff, alpha: 0.4 });
-      else if (d.kind === 'wall') g.rect(x - radius, y - radius, radius * 2, radius * 2).stroke({ color: 0x66ccff, width: 7 });
-      else if (['fire', 'ring', 'mushroom', 'drain'].includes(d.kind)) continue; // Rendered by the requested VFX above.
-      else if (d.kind === 'boomerang') {
-        active.add(row.id);
-        let sprite = this.projectileSprites.get(row.id);
-        const owner = this.fighters.get(row.owner.toHexString());
-        if (!sprite && owner?.weapon) {
-          sprite = new Sprite(owner.weapon.texture); sprite.anchor.set(0.5);
-          sprite.width = owner.weapon.width; sprite.height = owner.weapon.height;
-          this.fx.addChild(sprite); this.projectileSprites.set(row.id, sprite);
-        }
-        if (sprite) {
-          const p = this.toScreen(row.x, row.y, 1);
-          sprite.position.set(p.x, p.y); sprite.rotation += dt * 12;
-        } else g.circle(x, y, radius).fill(0xffffff);
-      } else {
-        const color = d.kind === 'smoke' ? 0xaaaaaa : d.kind === 'mushroom' ? 0xaa44dd : d.kind === 'drain' ? 0x44ff88 : d.kind === 'hook' ? 0xdddddd : d.kind === 'silence' ? 0x4488ff : 0xff6600;
-        if (d.kind === 'hook') {
-          const owner = this.fighters.get(row.owner.toHexString())?.last;
-          if (owner) g.moveTo(owner.x * this.unit, owner.y * this.unit).lineTo(x, y).stroke({ color, width: 2 });
-        }
-        g.circle(x, y, radius).fill({ color, alpha: pending ? 0.12 : d.kind === 'smoke' ? 0.8 : 0.45 }).stroke({ color, width: 2 });
-      }
-    }
-    for (const [id, sprite] of this.projectileSprites) if (!active.has(id)) { sprite.destroy(); this.projectileSprites.delete(id); }
+  dispose() {
+    if(this.disposed)return;this.disposed=true;
+    for(const cleanup of this.cleanups)cleanup();this.cleanups=[];
+    this.vfxScene.reset();this.vfx2d.dispose();this.vfx3d?.dispose();
+    this.clearFighters();for(const id of [...this.projectiles.keys()])this.removeProjectile(id);
+    this.app.destroy(true,{children:true});this.stage3d?.dispose();
+    for(const texture of this.textures.values())texture.destroy(true);this.textures.clear();
   }
 
   private drawDropMarkers() {

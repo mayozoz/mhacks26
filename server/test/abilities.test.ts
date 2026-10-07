@@ -13,6 +13,7 @@ function setup(ability = 'flash') {
   const f = fighter('a', 0), enemy = fighter('b', 2);
   const all = new Map([['a', f], ['b', enemy]]);
   const rows = new Map<bigint, any>();
+  const events: any[] = [];
   const players = [...all.values()].map(f => ({ identity: f.player, roomCode: 'TEST', totalDamage: 0 }));
   let seq = 0n;
   const ctx = { timestamp: timestamp(100), db: {
@@ -22,13 +23,41 @@ function setup(ability = 'flash') {
       roomCode: { filter: (code: string) => [...rows.values()].filter(o => o.roomCode === code) },
       insert: (row: any) => { const r = { ...row, id: ++seq }; rows.set(r.id, r); return r; },
       id: { find: (id: bigint) => rows.get(id), delete: (id: bigint) => rows.delete(id), update: (row: any) => rows.set(row.id, row) },
-    }, fxEvent: { insert: () => {} },
+    }, fxEvent: { insert: (event:any) => events.push(event) },
   } } as unknown as Ctx;
   const room = { code: 'TEST', arenaR: 12 } as RoomRow;
-  return { f, enemy, all, ctx, room, rows, players, setTime: (s: number) => { ctx.timestamp = timestamp(s); } };
+  return { f, enemy, all, ctx, room, rows, players, events, setTime: (s: number) => { ctx.timestamp = timestamp(s); } };
 }
 
 describe('special abilities', () => {
+  it('reports the wall-limited teleport endpoint at the same server timestamp',()=>{
+    const s=setup('flash');
+    s.ctx.db.abilityObject.insert({id:0n,owner:s.f.player,roomCode:'TEST',x:0,y:0,data:JSON.stringify({kind:'wall',radius:1,start:99,until:105})});
+    activateAbility(s.ctx,s.room,s.f,s.all);
+    const departure=s.events.find(e=>e.type==='flash'),arrival=s.events.find(e=>e.type==='flash_end');
+    expect(departure.x).toBe(0);expect(arrival.x).toBeCloseTo(.5);expect(arrival.x).toBe(s.f.x);
+    expect(arrival.createdAt).toEqual(departure.createdAt);
+  });
+  it('emits dash impact only for confirmed damage, including the actual contact position',()=>{
+    const s=setup('dash');s.enemy.x=1;activateAbility(s.ctx,s.room,s.f,s.all);
+    expect(s.events.find(e=>e.type==='dash_impact').x).toBe(1);
+    const immune=setup('dash');setEffect(immune.enemy,'invisible',103);
+    activateAbility(immune.ctx,immune.room,immune.f,immune.all);
+    expect(immune.events.some(e=>e.type==='dash_impact')).toBe(false);
+  });
+  it('sends drain targets only for opponents actually damaged and clears stale targets',()=>{
+    const s=setup('life_drain');activateAbility(s.ctx,s.room,s.f,s.all);
+    stepAbilityObjects(s.ctx,s.room,s.all,new Map(),.05);
+    const targets=()=>JSON.parse([...s.rows.values()][0].data).targets;
+    expect(targets()).toEqual([{id:'b',x:2,y:0}]);
+    setEffect(s.enemy,'invisible',103);s.setTime(100.05);
+    stepAbilityObjects(s.ctx,s.room,s.all,new Map(),.05);expect(targets()).toEqual([]);
+  });
+  it('reports the attack boost health cost once per actual activation',()=>{
+    const s=setup('attack_boost');activateAbility(s.ctx,s.room,s.f,s.all);activateAbility(s.ctx,s.room,s.f,s.all);
+    expect(s.events.filter(e=>e.type==='ability_cost')).toHaveLength(1);
+    expect(s.events.find(e=>e.type==='ability_cost').value).toBe(500);
+  });
   it.each(Object.keys(ABILITIES))('%s consumes one charge and starts its own cooldown', id => {
     const s = setup(id); activateAbility(s.ctx, s.room, s.f, s.all);
     expect(s.f.abilityCharges).toBe(1);

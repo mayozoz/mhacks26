@@ -2,7 +2,8 @@ import { connect } from '../../net/connection';
 import { REVEAL, type Phase } from '@doodle/spec';
 import { countdownCue, enableAudio, resumeAudio } from '../../audio/sfx';
 import { countdownTicks } from '../../audio/countdown-sounds';
-import { syncFromPhaseStart } from '../../net/clock';
+import { syncFromPhaseStart, serverNowMs } from '../../net/clock';
+import { mountAbilityBlindness } from '../../ui/ability-blindness';
 import { mountCountdown } from '../../ui/countdown';
 import { Arena } from './arena';
 import { lobbyOverlay } from './lobby';
@@ -36,6 +37,16 @@ export async function mount(el: HTMLElement) {
 
   let code = '';
   let phase: Phase | null = null;
+  let blindUntil = 0;
+  const stopBlind = mountAbilityBlindness(el, () => {
+    if (phase !== 'battle') { blindUntil = 0; return { now: serverNowMs() / 1000, until: 0, battle: false }; }
+    for (const o of conn.db.abilityObject.iter()) if (o.roomCode === code) {
+      const d = JSON.parse(o.data) as { kind: string; until: number };
+      if (d.kind === 'blind') blindUntil = Math.max(blindUntil, d.until);
+    }
+    return { now: serverNowMs() / 1000, until: blindUntil, battle: true };
+  });
+  window.addEventListener('pagehide', stopBlind, { once: true });
   let commentator: ReturnType<typeof mountCommentator> | null = null;
   let cleanup = () => {};
   let stopTicks = () => {};
@@ -107,6 +118,7 @@ export async function mount(el: HTMLElement) {
     render();
   };
   void arenaReady.then(created => {
+    window.addEventListener('pagehide', () => created.dispose(), { once: true });
     arena = created;
     if (code) arena.setRoom(code);
     if (phase) arena.setPhase(phase);

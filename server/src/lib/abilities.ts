@@ -39,6 +39,11 @@ function cue(ctx: Ctx, r: RoomRow, victim: FighterRow, dealt: number) {
   if (dealt > 0) ctx.db.fxEvent.insert({ id: 0n, roomCode: r.code, type: 'damage', x: victim.x, y: victim.y, owner: victim.player, value: dealt, createdAt: ctx.timestamp });
 }
 
+/** Confirmed presentation cues reuse the existing short-lived event table. */
+function visual(ctx: Ctx, r: RoomRow, f: FighterRow, type: string, value = 0) {
+  ctx.db.fxEvent.insert({ id: 0n, roomCode: r.code, type, x: f.x, y: f.y, owner: f.player, value, createdAt: ctx.timestamp });
+}
+
 export function segmentDistance(x: number, y: number, ax: number, ay: number, bx: number, by: number) {
   const dx = bx - ax, dy = by - ay;
   const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
@@ -111,9 +116,12 @@ export function activateAbility(ctx: Ctx, r: RoomRow, f: FighterRow, all: Map<st
     case 'flash': case 'dash': {
       const ax = f.x, ay = f.y;
       moveFighter(ctx, r, f, f.x + ux * T.travelDistance, f.y + uy * T.travelDistance);
+      visual(ctx, r, f, `${id}_end`, direction);
       if (id === 'dash') for (const o of enemies) {
         if (segmentDistance(o.x, o.y, ax, ay, f.x, f.y) > hitRadius(o, now) + 0.5) continue;
-        cue(ctx, r, o, dealOpponentDamage(ctx, o, f.player.toHexString(), GAME.maxHp * T.dashDamageFraction, now));
+        const dealt = dealOpponentDamage(ctx, o, f.player.toHexString(), GAME.maxHp * T.dashDamageFraction, now);
+        cue(ctx, r, o, dealt);
+        if (dealt > 0) visual(ctx, r, o, 'dash_impact', dealt);
         moveFighter(ctx, r, o, o.x + ux * T.knockbackDistance, o.y + uy * T.knockbackDistance);
       }
       break;
@@ -161,7 +169,11 @@ export function activateAbility(ctx: Ctx, r: RoomRow, f: FighterRow, all: Map<st
       break;
     }
     default:
-      if (id === 'attack_boost') f.hp = Math.max(0, f.hp - GAME.maxHp * T.attackHealthCostFraction);
+      if (id === 'attack_boost') {
+        const cost = Math.min(f.hp, GAME.maxHp * T.attackHealthCostFraction);
+        f.hp = Math.max(0, f.hp - GAME.maxHp * T.attackHealthCostFraction);
+        visual(ctx, r, f, 'ability_cost', cost);
+      }
       setEffect(f, id, now + cfg.duration);
   }
 }
@@ -231,9 +243,11 @@ export function stepAbilityObjects(ctx: Ctx, r: RoomRow, all: Map<string, Fighte
         if (d.kind === 'boomerang') cue(ctx, r, o, dealOpponentDamage(ctx, o, row.owner.toHexString(), (weapons.get(row.owner.toHexString())?.stats.damagePerHit ?? 300), now));
         if (d.kind === 'silence') { setEffect(o, 'silenced', now + 3); remove = true; }
         if (d.kind === 'hook') {
+          visual(ctx, r, o, 'hook_contact');
           if (owner) {
             const len = Math.hypot(o.x - owner.x, o.y - owner.y) || 1;
             moveFighter(ctx, r, o, owner.x + (o.x - owner.x) / len, owner.y + (o.y - owner.y) / len);
+            visual(ctx, r, o, 'hook_end');
           }
           remove = true;
         }
@@ -242,7 +256,7 @@ export function stepAbilityObjects(ctx: Ctx, r: RoomRow, all: Map<string, Fighte
         if (Math.abs(dist - d.radius) <= T.ringHalfWidth + hitRadius(o, now)) setEffect(o, 'burn', now + T.burnSeconds, GAME.stormDps, row.owner.toHexString());
       } else if (dist <= d.radius + hitRadius(o, now)) {
         if (d.kind === 'fire') setEffect(o, 'burn', now + T.burnSeconds, GAME.stormDps, row.owner.toHexString());
-        if (d.kind === 'mushroom') { setEffect(o, 'poison', now + T.poisonSeconds, T.poisonDps, row.owner.toHexString()); remove = true; break; }
+        if (d.kind === 'mushroom') { setEffect(o, 'poison', now + T.poisonSeconds, T.poisonDps, row.owner.toHexString()); visual(ctx, r, o, 'spore_hit'); remove = true; break; }
         if (d.kind === 'drain' && owner && owner.hp > 0) {
           const dealt = dealOpponentDamage(ctx, o, row.owner.toHexString(), T.drainDps * dt, now);
           owner.hp = Math.min(GAME.maxHp, owner.hp + dealt);

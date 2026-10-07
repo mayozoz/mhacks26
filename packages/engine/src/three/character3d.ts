@@ -46,6 +46,7 @@ export class Character3D {
   private attackToken = 0;
   private runWeight = 0;
   private materials: THREE.Material[] = [];
+  private ownedGeometry: THREE.BufferGeometry[] = [];
 
   constructor(asset: CharacterAsset, color: number) {
     this.baseColor = color;
@@ -71,6 +72,7 @@ export class Character3D {
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false }),
     );
     this.materials.push(ring.material);
+    this.ownedGeometry.push(ring.geometry);
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.01;
     this.root.add(ring, this.model);
@@ -139,6 +141,7 @@ export class Character3D {
       const base = m === this.materials[0] ? 1 : 0.9;
       m.transparent = a < 1 || base < 1;
       m.opacity = base * a;
+      m.depthWrite = m === this.bodyMaterial && a >= 1;
     }
     this.root.visible = a > 0;
   }
@@ -147,8 +150,16 @@ export class Character3D {
   get headHeight() { return (2.0 * MODEL_SCALE + 0.15) * this.root.scale.y; }
 
   dispose() {
+    this.attackToken++;
     this.mixer.stopAllAction();
+    this.mixer.uncacheRoot(this.model);
+    const skeletons=new Set<THREE.Skeleton>();
+    this.model.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)skeletons.add((o as THREE.SkinnedMesh).skeleton);});
+    for(const skeleton of skeletons)skeleton.dispose();
     this.root.removeFromParent();
+    for(const material of this.materials)material.dispose();this.materials=[];
+    for(const geometry of this.ownedGeometry)geometry.dispose();this.ownedGeometry=[];
+    this.root.clear();
   }
 
   /** After the mixer wrote this frame's pose: rotate bones in *character* space by `this.pose`. */
