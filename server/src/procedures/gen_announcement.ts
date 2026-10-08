@@ -17,7 +17,7 @@ export const genAnnouncement = spacetimedb.procedure(t.string(), (ctx) => {
     const p = tx.db.player.identity.find(ctx.sender);
     const r = p && tx.db.room.code.find(p.roomCode);
     const w = tx.db.weapon.player.find(ctx.sender);
-    if (!p || !r || !w?.spec || !['reveal', 'battle'].includes(r.phase)) return null;
+    if (!p || !r || !w?.spec || !['drop', 'reveal', 'battle'].includes(r.phase)) return null;
     let name: string;
     try { name = (JSON.parse(w.spec) as StoredWeapon).spec.name.trim().slice(0, 100); }
     catch { return null; }
@@ -67,7 +67,7 @@ export const genAnnouncement = spacetimedb.procedure(t.string(), (ctx) => {
     const r = p && tx.db.room.code.find(p.roomCode);
     const row = tx.db.weaponVoice.player.find(ctx.sender);
     // Never attach an old response to a new round or replay it after Results.
-    if (!r || r.code !== job.row.roomCode || r.round !== job.row.round || !['reveal', 'battle'].includes(r.phase)
+    if (!r || r.code !== job.row.roomCode || r.round !== job.row.round || !['drop', 'reveal', 'battle'].includes(r.phase)
       || !row || row.requestedAt.microsSinceUnixEpoch !== job.row.requestedAt.microsSinceUnixEpoch) return '';
     tx.db.weaponVoice.player.update({ ...row, audioUrl, status: audioUrl ? 'ready' : 'failed' });
     return audioUrl;

@@ -60,6 +60,14 @@ export function connect(role: 'screen' | 'play'): Promise<Connected> {
       .onDisconnect((_ctx, err) => {
         console.warn('[stdb] disconnected');
         debug.error('connection', `disconnected${err ? `: ${String(err)}` : ''} — reload to reconnect`);
+        if (!done || document.getElementById('connection-lost')) return;
+        const notice = document.createElement('div');
+        notice.id = 'connection-lost';
+        notice.className = 'connection-lost';
+        notice.setAttribute('role', 'alert');
+        notice.innerHTML = '<span>Disconnected from the game. Reconnect to see your room.</span><button type="button">Reconnect</button>';
+        notice.querySelector('button')!.onclick = () => location.reload();
+        document.body.appendChild(notice);
       })
       .build();
     };

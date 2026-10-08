@@ -12,6 +12,7 @@ import { mountScoreboard } from './scoreboard';
 import { mountReveal } from './reveal';
 import { mountCommentator } from './commentator';
 import { mountServiceNotice } from '../../ui/service-notice';
+import { mountMenuMusic } from '../../audio/menu-music';
 
 // Shared screen (/screen). Creates a room, subscribes to everything public for it, and
 // renders. It never simulates — positions come from `fighter` rows, ~100 ms behind.
@@ -26,6 +27,10 @@ export async function mount(el: HTMLElement) {
   const { conn, identity } = await connect('screen');
   el.innerHTML = `<div id="stage" style="position:fixed;inset:0"></div><div id="overlay" style="position:fixed;inset:0;pointer-events:none"><div class="center" role="status"><h1>Preparing your room…</h1></div></div>`;
   const overlay = el.querySelector<HTMLDivElement>('#overlay')!;
+  const musicButton = document.createElement('button');
+  musicButton.className = 'screen-music';
+  el.appendChild(musicButton);
+  const music = mountMenuMusic(musicButton);
   let arena: Arena | null = null;
   const arenaReady = Arena.create(el.querySelector<HTMLDivElement>('#stage')!, conn);
 

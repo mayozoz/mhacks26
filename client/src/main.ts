@@ -3,6 +3,11 @@ import { debug } from './debug';
 
 debug.mount(); // no-op unless ?debug / VITE_DEBUG=1
 
+// A cached page can contain a closed database socket and an outdated roster.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted && /^\/(screen|play)\/?$/.test(location.pathname)) location.reload();
+});
+
 // Tiny path router — one app, two player-facing views plus the dev playground.
 const routes: Record<string, () => Promise<{ mount(el: HTMLElement): void | Promise<void> }>> = {
   '': () => import('./routes/title'),
