@@ -27,6 +27,7 @@ export function enterPhase(ctx: Ctx, r: RoomRow, phase: Phase) {
     case 'draw':
       resetRound(ctx, r.code); // also covers "Play again" straight from results
       next.winner = '';
+      logRoundStart(ctx, r);
       break;
     case 'drop': {
       const random = mulberry32(r.seed ^ Number(ctx.timestamp.microsSinceUnixEpoch & 0xffffffffn));
@@ -89,6 +90,17 @@ function spawnFighters(ctx: Ctx, r: RoomRow): Partial<RoomRow> {
   return { arenaR, stormX: 0, stormY: 0, stormR: stormStartRadius(arenaR) };
 }
 
+/** Play stats: one game_log row per round, plus a player_seen row per identity. */
+function logRoundStart(ctx: Ctx, r: RoomRow) {
+  const players = [...ctx.db.player.roomCode.filter(r.code)];
+  ctx.db.gameLog.insert({ id: 0n, roomCode: r.code, round: r.round, players: players.length, startedAt: ctx.timestamp, endedAt: undefined });
+  for (const p of players) {
+    const seen = ctx.db.playerSeen.identity.find(p.identity);
+    if (seen) ctx.db.playerSeen.identity.update({ ...seen, lastPlayedAt: ctx.timestamp, rounds: seen.rounds + 1 });
+    else ctx.db.playerSeen.insert({ identity: p.identity, firstPlayedAt: ctx.timestamp, lastPlayedAt: ctx.timestamp, rounds: 1 });
+  }
+}
+
 /** Assign placements to survivors and pick the winner (highest HP% on a tie). */
 function finishBattle(ctx: Ctx, r: RoomRow) {
   const fighters = [...ctx.db.fighter.roomCode.filter(r.code)].sort((a, b) => b.hp - a.hp);
@@ -99,4 +111,7 @@ function finishBattle(ctx: Ctx, r: RoomRow) {
     const p = ctx.db.player.identity.find(f.player);
     if (p && p.placement === 0) ctx.db.player.identity.update({ ...p, placement: i + 1 });
   });
+  for (const log of ctx.db.gameLog.roomCode.filter(r.code)) {
+    if (log.round === r.round && !log.endedAt) ctx.db.gameLog.id.update({ ...log, endedAt: ctx.timestamp });
+  }
 }

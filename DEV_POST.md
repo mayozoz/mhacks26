@@ -33,7 +33,7 @@ Everyone joins from their phone by scanning a QR code on a shared screen (a TV, 
 
 ## Partner Technologies
 
-### ElevenLabs: the voice of the arena (🏆 our ElevenLabs track win)
+### ElevenLabs: the voice of the arena (🏆 won MLH's Best Use of ElevenLabs)
 ElevenLabs makes the game feel like a live game show:
 - **Text-to-speech** (`eleven_flash_v2_5`) voices a sports-style commentator on the big screen, reads each weapon's name during the Reveal ("Maya's Thunder Noodle!"), and has each phone announce "Your weapon is…" to its own player.
 - **Sound effects:** every weapon gets a custom one-second sound, generated from a sound description written for that specific weapon.
@@ -62,7 +62,7 @@ S3 + CloudFront + ACM + Route 53 host the static site with HTTPS on the custom d
 
 ## Hackathon Experience
 
-We built Doodle FFA at **MHacks 2026** in Ann Arbor, as a team of three, and **we won the ElevenLabs track** from MLH!
+We built Doodle FFA at **MHacks 2026** in Ann Arbor, as a team of three, and **we won MLH's Best Use of ElevenLabs**!
 
 I had a lot of confidence in this idea from the start. The more it came together, the more invested I got. Every time a new piece clicked into place, like the first doodle turning into a working weapon or the first round, I thought "damn, this is cool asf".
 

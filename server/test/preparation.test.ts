@@ -37,8 +37,13 @@ describe('post-drawing preparation', () => {
     for (const name of ['generation', 'drawing', 'doodle', 'weapon', 'weaponVoice', 'fighter', 'input', 'projectile', 'abilityObject', 'fxEvent']) {
       db[name] = { player: { delete: () => {} }, roomCode: { delete: () => {} } };
     }
+    const logs: any[] = [], seen: any[] = [];
+    db.gameLog = { insert: (row: any) => logs.push(row) };
+    db.playerSeen = { insert: (row: any) => seen.push(row), identity: { find: () => undefined } };
     enterPhase(s.ctx, s.room, 'draw');
     expect((s.player as any).totalDamage).toBe(0);
+    expect(logs).toMatchObject([{ roomCode: 'TEST', players: 1 }]);
+    expect(seen).toMatchObject([{ rounds: 1 }]);
   });
   it('assigns a valid random special and allows 60 seconds for the full sequence', () => {
     const s = setup();

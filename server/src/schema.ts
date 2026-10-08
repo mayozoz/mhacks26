@@ -250,7 +250,26 @@ export const generation = table({ name: 'generation' }, {
   spec: t.bool(), spriteUrl: t.bool(), sfxUrl: t.bool(),
 });
 
+/** Private: one row per round started, kept forever for play stats (never cleared with the room). */
+export const gameLog = table({ name: 'game_log' }, {
+  id: t.u64().primaryKey().autoInc(),
+  roomCode: t.string().index('btree'),
+  round: t.u32(),
+  players: t.u32(),
+  startedAt: t.timestamp(),
+  /** set when the battle ends; empty if everyone left before the fight finished */
+  endedAt: t.option(t.timestamp()),
+});
+
+/** Private: every identity that has played a round. COUNT(*) = unique player devices. */
+export const playerSeen = table({ name: 'player_seen' }, {
+  identity: t.identity().primaryKey(),
+  firstPlayedAt: t.timestamp(),
+  lastPlayedAt: t.timestamp(),
+  rounds: t.u32(),
+});
+
 const spacetimedb = schema({
-  generation, room, player, drawing, doodle, weapon, weaponVoice, fighter, input, projectile, abilityObject, fxEvent, debugEvent, serviceStatus, commentary, tickSchedule, secrets, admin,
+  gameLog, playerSeen, generation, room, player, drawing, doodle, weapon, weaponVoice, fighter, input, projectile, abilityObject, fxEvent, debugEvent, serviceStatus, commentary, tickSchedule, secrets, admin,
 });
 export default spacetimedb;
